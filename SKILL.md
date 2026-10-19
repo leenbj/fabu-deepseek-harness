@@ -968,7 +968,7 @@ media_publish {op:"backfill", recipeId:"sohu__publish-article", accountCode:"a-1
   K2 篇幅 900–1150、K3 数据 ≥3 处、K4 段落 ≥4、K5 标题 ≤30（头条上限）、K6 非案例稿句式。
 - [`scripts/style_check.py`](scripts/style_check.py) —— **风格门禁**：人化（AI 腔硬禁词、模型路标、
   翻案腔「不是…而是…」）+ 去广告腔（劝导口吻、绝对化承诺、第二人称、促销句式、感叹号）。
-  移植自 news-draft-skill 的 gates.py；按新闻稿体裁把破折号与提示性冒号降为提醒，`--strict` 才硬错；
+  移植自早期 news-draft-skill 的 gates.py（该技能已并入本技能，源码归档在 GitHub）；按新闻稿体裁把破折号与提示性冒号降为提醒，`--strict` 才硬错；
   第二人称与劝导类只在**引号之外**判（引述客户的话不算对读者说话）。
 - [`scripts/anysearch_fill.py`](scripts/anysearch_fill.py) —— **缺料自动补料**：调用本机 AnySearch
   按企业名／行业名检索，自动派生多轮查询并遮蔽工商登记类字段（注册资本、法人、统一社会信用代码等）。

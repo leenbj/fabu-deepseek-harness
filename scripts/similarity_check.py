@@ -30,7 +30,7 @@ DEFAULT_TITLE_THRESHOLD = 15.0
 NGRAM = 5
 TITLE_NGRAM = 2  # titles are short: bigrams discriminate, 5-grams are too coarse
 
-# ── 标题骨架 / 句式部件（来源：news-draft-skill 的 gates.py）─────────────────
+# ── 标题骨架 / 句式部件（来源：早期 news-draft-skill（已并入本技能） 的 gates.py）─────────────────
 # 2-gram 只能发现"字面像"，发现不了"同一个模子换个词"。
 # 骨架 = 抠掉域名、引号、标点、本文自己的企业名之后剩下的句式。
 TITLE_MARKERS = ("官网启用", "正式启用", "启用中文域名", "启用", "上线",
@@ -235,7 +235,7 @@ def main() -> int:
     print()
 
     # ── 标题骨架 / 句式部件（比 2-gram 相似度更懂中文标题）──────────────────
-    # 来源：news-draft-skill 的 title_skeleton / title_signature / _shared_phrases。
+    # 来源：早期 news-draft-skill（已并入本技能） 的 title_skeleton / title_signature / _shared_phrases。
     # 2-gram 只能发现"字面像"，发现不了"同一个模子换个词"——
     # 例如「X 启用 Y，…有了固定入口」与「X 启用 Y，…把名字落到入口上」。
     skel_over = []

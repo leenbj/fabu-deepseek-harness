@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """风格门禁：人化（去 AI 腔）+ 去广告腔。
 
-来源：news-draft-skill 的 `gates.py`（human-writing 1.1.0 / Humanizer-zh 的硬规则），
+来源：早期 news-draft-skill（已并入本技能） 的 `gates.py`（human-writing 1.1.0 / Humanizer-zh 的硬规则），
 移植到本技能后按稿件体裁做了两处调整：
 
 1. **破折号与提示性冒号默认只报警**。中文新闻稿里 `——` 是正常标点，原技能把它当硬错，
