@@ -10,7 +10,7 @@
 | # | 环节 | 产出 | 门禁 |
 |---|---|---|---|
 | 1 | 读表格 | 内部资料摘要 | 逐列核对列义；编号/域名/企业名称齐 |
-| 2 | 写案例稿 | `NN-企业-稿件.txt` | `draft_check.py` 18 项 + 同批相似度 ≤10% |
+| 2 | 写案例稿 | `NN-企业-稿件.txt` | `draft_check.py` 18 项 + 同批相似度 ≤10% + `style_check.py`（人化/去广告腔） |
 | 2b | 配科普稿 | `NN-科普-方向K-*.txt` | `kepu_check.py`（正面性/篇幅/数据/标题）+ 相似度 ≤15% |
 | 3 | 出网页 | 单文件 `.html` + 页面清单 | `page_check.py` 47 项（自包含/内容/版式/互链） |
 | 4 | 发自媒体 | 搜狐号 / 头条号 / CSDN 链接 | 先彩排再真发；同账号成对发布 |
@@ -40,6 +40,7 @@ git clone https://github.com/<你>/fabu-deepseek-harness.git \
 依赖：
 
 - Python 3.12+，`openpyxl`（读写表格）
+- AnySearch 技能（可选，缺企业资料时自动检索补料；不在则跳过并在稿外注明）
 - `playwright` + chromium（可选，仅网页版式组需要；缺失时自动跳过并在结论里写明）
 
 环境变量：
@@ -92,7 +93,9 @@ references/
   editorial-examples.md  九类反例与修正
 scripts/
   draft_check.py         案例稿门禁（H1–H7，18 项）
-  similarity_check.py    同批/同系列相似度
+  similarity_check.py    同批/同系列相似度（含标题骨架/句式部件检测）
+  style_check.py         风格门禁：人化（去 AI 腔）+ 去广告腔
+  anysearch_fill.py      缺企业资料时自动检索补料（调用本机 AnySearch）
   kepu_check.py          科普稿门禁（K1–K6）
   kepu_plan.py           科普方向发号 + 配对台账
   render_pages.py        稿件 → 单文件网页（+ 站点索引互链）

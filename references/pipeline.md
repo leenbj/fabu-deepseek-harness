@@ -46,9 +46,12 @@ PY
 按 §3–§6 执行：确认启用口径 → 检索行业近期消息 → 为每篇定独有报道角度 → 写 → 自检。
 
 ```bash
-python scripts/draft_check.py    --dir "<项目文件夹>"   # H1/H2/H3–H7 字面门禁
-python scripts/similarity_check.py --dir "<项目文件夹>"  # 同批任意两篇：正文 ≤10%、标题 ≤15%
+python scripts/draft_check.py     --dir "<项目文件夹>"   # H1/H2/H3–H7 字面门禁
+python scripts/similarity_check.py --dir "<项目文件夹>"  # 正文 ≤10%、标题 ≤15% + 标题骨架/句式部件
+python scripts/style_check.py     --dir "<项目文件夹>"   # 人化（去 AI 腔）+ 去广告腔
 ```
+
+缺企业资料时，**先自动补料再问**：`scripts/anysearch_fill.py --company "<全称>"`。
 
 两条都过才进下一步。**不要为了适配平台去改标题**（见阶段四）。
 

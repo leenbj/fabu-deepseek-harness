@@ -30,6 +30,36 @@ DEFAULT_TITLE_THRESHOLD = 15.0
 NGRAM = 5
 TITLE_NGRAM = 2  # titles are short: bigrams discriminate, 5-grams are too coarse
 
+# ── 标题骨架 / 句式部件（来源：news-draft-skill 的 gates.py）─────────────────
+# 2-gram 只能发现"字面像"，发现不了"同一个模子换个词"。
+# 骨架 = 抠掉域名、引号、标点、本文自己的企业名之后剩下的句式。
+TITLE_MARKERS = ("官网启用", "正式启用", "启用中文域名", "启用", "上线",
+                 "官网地址", "有了中文入口", "中文入口", "入口升级", "数字化入口",
+                 "转向", "落地", "提速", "在变", "产业", "行业", "制造业", "数字化",
+                 "门槛", "识别", "已经不是", "成了")
+# 只收"句式部件"，不收企业名、域名和"启用"这类过于通用的动词
+TITLE_PHRASES = ("官网启用", "正式启用", "启用中文域名", "官网地址",
+                 "有了中文入口", "中文入口", "入口升级", "数字化入口", "数字门面",
+                 "线上门面", "线上入口", "在变", "上线", "写成中文", "做成官网",
+                 "数字化", "门槛", "识别", "中文写法")
+TITLE_SKELETON_MIN = 6   # 骨架短于这个长度就不比较首尾（避免误伤）
+TITLE_SKELETON_EDGE = 5  # 骨架首/尾相同字数达到这个值 → 判为同一个模子
+_TITLE_DOMAIN = re.compile(r"[A-Za-z0-9\u4e00-\u9fa5-]{1,30}[.．][\u4e00-\u9fa5]{2,10}")
+_TITLE_QUOTED = re.compile(r"[“”‘’\"'《》〈〉]")
+_TITLE_PUNCT = re.compile(r"[\s，。、；：！？·,.;:!?（）()\[\]【】\-—_/\\|~]+")
+
+
+def title_skeleton(title: str, masks=()) -> str:
+    """标题骨架：去掉域名、引号、标点，以及企业名/简称之后的剩余部分。"""
+    t = title or ""
+    for v in masks:
+        if v and len(str(v)) >= 2:
+            t = re.sub(re.escape(str(v)), "", t, flags=re.I)
+    t = _TITLE_DOMAIN.sub("", t)
+    t = _TITLE_QUOTED.sub("", t)
+    t = _TITLE_PUNCT.sub("", t)
+    return t
+
 # Mandated boilerplate that every article must carry (SKILL §6 H1/H6). These are
 # phrasing the skill itself forces, so they must not be counted as "similarity".
 MANDATED_BOILERPLATE = (
@@ -203,6 +233,47 @@ def main() -> int:
         if sim > worst[0]:
             worst = (sim, a, b)
     print()
+
+    # ── 标题骨架 / 句式部件（比 2-gram 相似度更懂中文标题）──────────────────
+    # 来源：news-draft-skill 的 title_skeleton / title_signature / _shared_phrases。
+    # 2-gram 只能发现"字面像"，发现不了"同一个模子换个词"——
+    # 例如「X 启用 Y，…有了固定入口」与「X 启用 Y，…把名字落到入口上」。
+    skel_over = []
+    print(f"  标题骨架比对（抠掉域名/引号/标点/企业名后看是不是同一个模子）")
+    print("  " + "-" * 108)
+    for a, b in itertools.combinations(articles, 2):
+        sk_a, sk_b = title_skeleton(a.title, a.drop), title_skeleton(b.title, b.drop)
+        problems = []
+        if sk_a and sk_a == sk_b:
+            problems.append(f"骨架完全相同「{sk_a}」")
+        elif min(len(sk_a), len(sk_b)) >= TITLE_SKELETON_MIN:
+            if sk_a[:TITLE_SKELETON_EDGE] == sk_b[:TITLE_SKELETON_EDGE]:
+                problems.append(f"开头相同「{sk_a[:TITLE_SKELETON_EDGE]}」")
+            elif sk_a[-TITLE_SKELETON_EDGE:] == sk_b[-TITLE_SKELETON_EDGE:]:
+                problems.append(f"结尾相同「{sk_a[-TITLE_SKELETON_EDGE:]}」")
+        shared = [p for p in TITLE_PHRASES if p in a.title and p in b.title]
+        if len(shared) >= 2:
+            problems.append(f"共用 {len(shared)} 个句式部件（{'、'.join(shared)}）")
+        sig_a = tuple(m for m in TITLE_MARKERS if m in a.title)
+        sig_b = tuple(m for m in TITLE_MARKERS if m in b.title)
+        # 单个标记不算签名：「启用」是案例稿标题的必备词，两两都有；
+        # 只有签名里同时出现 ≥2 个标记，才说明两篇用的是同一套写法。
+        if len(sig_a) >= 2 and sig_a == sig_b:
+            problems.append(f"句式签名相同（{'、'.join(sig_a)}）")
+        if problems:
+            skel_over.append((a.path.name, b.path.name, "；".join(problems)))
+        print(f"  {a.path.name[:26]:<28}{b.path.name[:26]:<28}"
+              f"{'素材不足以比较' if min(len(sk_a), len(sk_b)) < TITLE_SKELETON_MIN and not problems else ('；'.join(problems) if problems else 'ok')}")
+    print()
+
+    if skel_over:
+        print(f"RESULT: FAIL — {len(skel_over)} 对标题是同一个模子（2-gram 相似度看不出来的那种）")
+        for x, y, why in skel_over:
+            print(f"  {x} ↔ {y}：{why}")
+        print("改法：换一个切入角度重写标题——换开头方式、换落点、换句式部件，"
+              "不要只替换同义词。整批标题不能让读者觉得是同一句。")
+        print("See references/similarity-metric.md。")
+        return 1
 
     if over:
         print(f"RESULT: FAIL — {over} pair(s) over threshold.")
