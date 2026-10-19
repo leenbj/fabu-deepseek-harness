@@ -1,0 +1,207 @@
+/* ============================================================================
+   中文域名企业新闻稿 · 文章详情页样式
+   ----------------------------------------------------------------------------
+   复刻自参考页（北京知识产权研究会官网 article-detail 页）的计算样式：
+   各元素的字号 / 行高 / 颜色 / 边框 / 定位数值均由 Playwright 读取该页
+   getComputedStyle 与 getBoundingClientRect 得到，不是目测估值。
+   与参考页的已知差异见 references/article-page.md「保真度边界」一节。
+
+   外部依赖一律内联：站点标识（生成时写成 image/png 的 data URI）与分享图标
+   字体（生成时写成 font/woff 的 data URI）都在渲染阶段替换，因此本样式只产出
+   单文件、可离线打开的页面，不会向任何 CDN 发请求。
+   ============================================================================ */
+
+/* ---------- 基础 ---------- */
+*,
+*::before,
+*::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: #fff;
+  color: #666;
+  font-size: 14px;
+  line-height: 1.5;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, "PingFang SC",
+    Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Microsoft Yahei";
+}
+
+a { color: #666; text-decoration: none; }
+img { border: 0; vertical-align: middle; }
+ul, ol { margin: 0; padding: 0; list-style: none; }
+h1, h2, h3, h4 { margin: 0; font-weight: 400; }
+
+.preview { position: relative; }
+.section { position: relative; }
+.wrap { position: absolute; left: 50%; width: 1200px; margin-left: -600px; }
+
+/* ---------- 顶部：站点标识 + 导航 ---------- */
+.navigator { height: 200px; background: #fff; overflow: hidden; }
+
+.site-logo {
+  position: absolute; left: -1px; top: 32px;
+  display: block; width: 113px; height: 113px;
+}
+.site-logo img { width: 100%; height: 100%; object-fit: contain; }
+
+.site-name {
+  position: absolute; left: 112px; top: 67px; width: 327px; height: 48px;
+  font-size: 33px; line-height: 46px; font-weight: 700; color: #333;
+  /* 参考页声明的是 FZKai-Z03S（方正楷体，由百度 CDN 提供）；这里不引外链，
+     先命中同名本机字体，未安装则退到系统楷体，字形接近。 */
+  font-family: FZKai-Z03S, "KaiTi", "STKaiti", "楷体", serif;
+  white-space: nowrap;
+}
+
+.site-sub {
+  position: absolute; left: 119px; top: 115px; width: 339px;
+  font-size: 14px; line-height: 21px; font-weight: 700; color: #666;
+  letter-spacing: 4px; white-space: nowrap;
+}
+
+.site-nav { position: absolute; left: 0; top: 150px; width: 1200px; height: 50px; }
+
+.menu-list { display: flex; justify-content: space-between; height: 50px; background: #c02437; text-align: left; }
+.menu-item { position: relative; height: 50px; text-align: center; flex-shrink: 0; }
+.menu-item > a {
+  display: flex; align-items: center; justify-content: center;
+  height: 50px; padding: 0 20px;
+  font-size: 14px; font-weight: 700; color: #fff; background: #c02437;
+  transition: color .2s linear, background .2s linear;
+}
+.menu-item:hover > a,
+.menu-item.active > a { background: #bb1a1a; color: #fff; }
+
+.menu-item > ul {
+  display: none; position: absolute; top: 50px; left: 50%; transform: translateX(-50%);
+  z-index: 99999; background: #333; box-shadow: 0 1px 1px rgba(0, 0, 0, .3);
+}
+.menu-item:hover > ul { display: block; }
+.menu-item > ul > li { width: 100%; text-align: center; }
+.menu-item > ul > li > a {
+  display: block; padding: 10px 15px;
+  font-size: 13px; color: #dedede; white-space: nowrap;
+  transition: color .2s linear, background .2s linear;
+}
+.menu-item > ul > li > a:hover { background: #bb1a1a; color: #fff; }
+
+/* ---------- 正文区 ---------- */
+.detail { padding: 70px 0; }
+.ap-container { width: 1200px; margin: 0 auto; }
+.layout { display: flex; align-items: flex-start; gap: 40px; }
+.main { flex: 1 1 0; min-width: 0; }
+
+.article-title {
+  font-size: 24px; line-height: 1.4; font-weight: 400; color: #333;
+  margin: 0 0 20px;
+}
+
+.article-meta { font-size: 14px; line-height: 1.4; color: #999; }
+.article-meta a { color: #999; }
+.article-meta a:hover { color: #666; }
+
+.detail-content { margin-top: 10px; line-height: 2; color: #666; }
+.detail-content p { margin: 10px 0 0; text-indent: 2em; }
+
+/* ---------- 分享（social-share 组件样式，图标字形内联在字体里） ---------- */
+@font-face {
+  font-family: socialshare;
+  src: url({{iconfont_data_uri}}) format("woff");
+  font-weight: normal;
+  font-style: normal;
+}
+
+.social-share {
+  font-family: socialshare !important; font-size: 16px; font-style: normal;
+  -webkit-font-smoothing: antialiased; -webkit-text-stroke-width: .2px;
+  -moz-osx-font-smoothing: grayscale;
+}
+.social-share * { font-family: socialshare !important; }
+.social-share a { position: relative; display: inline-block; margin: 4px; outline: 0; text-decoration: none; }
+.social-share .social-share-icon {
+  position: relative; display: inline-block; width: 32px; height: 32px;
+  font-size: 20px; line-height: 32px; text-align: center; vertical-align: middle;
+  border: 1px solid #666; border-radius: 50%; color: #666;
+  transition: background .6s ease-out 0s;
+}
+.social-share .social-share-icon:hover { color: #fff; }
+.social-share .icon-weibo:before { content: "\f12a"; }
+.social-share .icon-wechat:before { content: "\f09a"; }
+.social-share .icon-qq:before { content: "\f11a"; }
+.social-share .icon-qzone:before { content: "\f08a"; }
+.social-share .icon-douban:before { content: "\f10a"; }
+.social-share .icon-weibo { color: #ff763b; border-color: #ff763b; }
+.social-share .icon-weibo:hover { background: #ff763b; }
+.social-share .icon-wechat { color: #7bc549; border-color: #7bc549; }
+.social-share .icon-wechat:hover { background: #7bc549; }
+.social-share .icon-qq { color: #56b6e7; border-color: #56b6e7; }
+.social-share .icon-qq:hover { background: #56b6e7; }
+.social-share .icon-qzone { color: #fdbe3d; border-color: #fdbe3d; }
+.social-share .icon-qzone:hover { background: #fdbe3d; }
+.social-share .icon-douban { color: #33b045; border-color: #33b045; }
+.social-share .icon-douban:hover { background: #33b045; }
+
+/* ---------- 侧栏 ---------- */
+.sidebar { flex: 0 0 300px; width: 300px; }
+
+.card {
+  position: relative; overflow: hidden;
+  padding: 15px 16px 40px;
+  border: 1px solid #ececec; border-top: 3px solid #00a0e9; border-radius: 3px;
+}
+.card + .card { margin-top: 20px; }
+
+.new-list { padding-top: 15px; border-top: 1px solid #ececec; }
+.sidebar .uk-h4 { font-size: 14px; line-height: 25px; color: #262626; margin: 0; }
+.sidebar .uk-h4::before {
+  content: ""; display: inline-block; width: 2px; height: 10px;
+  background: #00a0e9; margin: 0 6px 0 0;
+}
+/* 侧栏两个标题下面的短横线。参考页把这条规则写在 .sidebar h3::after 上，
+   所以「最新动态」那个 h3.uk-h4 也带一条；它同时决定了标题块高 37px
+   （25px 行高 + 10px 上边距 + 0.5px 上下边框），少写会让列表整体上移 12px。 */
+.sidebar h3::after {
+  content: ""; display: block; width: 20px; height: 0;
+  border: .5px solid #ddd; margin-top: 10px;
+}
+.new-list li { padding: 5px 0 15px; }
+.new-list li a { display: block; font-size: 14px; line-height: 20px; color: #262626; padding-bottom: 4px; }
+.new-list li a:hover { color: #13b5ff; }
+.new-list li span { font-size: 12px; line-height: 18px; color: #a7a7a7; }
+
+.footer-tip {
+  position: absolute; left: 0; bottom: 0; width: 100%; height: 40px; line-height: 40px;
+  padding: 0 0 4px; text-align: center; color: #fff; background: #00a0e9;
+}
+
+.card.next h3 { font-size: 16px; line-height: 25px; color: #262626; margin: 0 0 20px; }
+.card.next a { display: block; font-size: 14px; line-height: 20px; color: #262626; padding-bottom: 4px; }
+.card.next a:hover { color: #13b5ff; }
+
+/* ---------- 页脚 ---------- */
+.footer { height: 250px; background: #414141; overflow: hidden; }
+.footer-red { height: 52px; background: #c02437; }
+.footer-wrap { position: absolute; left: 50%; top: 0; width: 1200px; height: 250px; margin-left: -600px; }
+
+.f-line { position: absolute; font-size: 15px; line-height: 22px; color: #fff; }
+.f-tip { left: 0; top: 72px; color: #f6f8f7; font-weight: 700; }
+.f-links { left: 83px; top: 74px; }
+.f-links a { margin-right: 20px; font-size: 14px; line-height: 21px; color: #ccc; }
+.f-links a:hover { color: #fff; }
+.f-org { left: 0; top: 104px; }
+.f-addr { left: 0; top: 137px; }
+.f-domain { left: 0; top: 168px; }
+/* 参考页这一行不是整行居中：它从内容区左起 348px 处开始排（实测文字左边 468px）。
+   其余页脚文案是 15px，这一行参考页没有指定字号，继承成 14px。 */
+.f-copy { left: 348px; top: 215px; font-size: 14px; line-height: 21px; color: #8b8b8b; white-space: nowrap; }
+
+.section-icp { height: 24px; line-height: 24px; background: #f8f8f8; text-align: center; font-size: 12px; }
+.section-icp a { margin-right: 10px; color: #888; }
+.section-icp a:hover { color: #666; }
+
+/* ---------- 窄屏：整页等比缩放（与参考页同一处理方式） ---------- */
+@media print {
+  .site-nav, .social-share, .sidebar { display: none; }
+}

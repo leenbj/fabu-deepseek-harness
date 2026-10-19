@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+*.log
+.DS_Store
+Thumbs.db
+# 运行产物（页面清单/作业清单里记的是本机绝对路径，不进仓库）
+_pages*.json
+jobs.json
+batch.json
+links.json
