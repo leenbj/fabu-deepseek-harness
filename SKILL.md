@@ -37,6 +37,9 @@ metadata:
   kepu-gate-script: scripts/kepu_check.py (正面性 / 篇幅 / 数据密度 / 段落 / 标题<=30 且含「中文域名」+ 价值用语(应用·价值·有用) 且建议提问式 / 非案例稿)
   style-gate-script: scripts/style_check.py (人化 AI 腔 + 去广告腔；默认破折号/冒号仅提醒，--strict 才硬错)
   research-fill-script: scripts/anysearch_fill.py (缺企业资料时自动检索补料；工商登记字段已遮蔽)
+  web-lookup-channel: AnySearch (唯一通道；search / batch_search / extract)
+  web-lookup-rule: 所有联网查询（行业消息/政策数据/原文核对/缺料补料）一律走 AnySearch，不得使用内置 web_search/web_fetch（内置搜索依赖 DeepSeek 凭据，非 DeepSeek 模型的机器上必然失败）
+  web-lookup-confirm: python scripts/anysearch_fill.py --show-cmd
   research-fill-rule: 资料里没有业务事实时**必须**先自动检索补料再问用户；检索到的别家企业信息只能当行业/区域背景
   title-skeleton-gate: similarity_check.py 同时查标题骨架/句式部件/句式签名，防"换词不换模子" 
   kepu-naming: NN-科普-方向K-<关键词>.txt，与 NN-*-稿件.txt 同期号配对
@@ -191,7 +194,7 @@ Excel（.xlsx / .xls / .csv）、纯文字段落、企业案例说明；三者�
 官网启用依据：用户统一确认（未经独立联网核验）。
 ```
 
-若用户明确允许、且确有联网能力并实际打开了官网核对，可另记"已核验"并附证据（链接与核对时间）；
+若用户明确允许，且能用 AnySearch `extract` 实际打开官网核对，可另记"已核验"并附证据（链接与核对时间）；
 否则一律使用上面这句，不得升级为"已验证"。
 
 ## 4. 研究流程
@@ -202,21 +205,49 @@ Excel（.xlsx / .xls / .csv）、纯文字段落、企业案例说明；三者�
 
 ### 4.2 检索
 
+> **联网查询的唯一通道是 AnySearch。**
+> 本技能里所有"需要去网上查"的动作——行业近期消息、政策与数据、原文核对、
+> 企业缺料补料——**一律通过本机已安装的 AnySearch 技能**完成：
+> 封装脚本 `scripts/anysearch_fill.py`（检索补料）和 AnySearch 官方 CLI
+> （`search` / `batch_search` / `extract`）。
+>
+> **不得使用宿主内置的 `web_search` / `web_fetch` 工具，也不要因为"内置搜索更顺手"就绕过 AnySearch。**
+> 原因很实际：内置 `web_search` 依赖 DeepSeek 凭据，在只配了其它模型供应商
+> （如 volcengine）的机器上会直接报 `WEB_PROVIDER_CREDENTIAL_MISSING` 而失败。
+> AnySearch 走自己的 API key，与聊天模型无关，是这台机器上唯一可靠的检索通道。
+> 只有 AnySearch 不可用时，才按 §4.8 记录限制，而不是改用内置搜索。
+
 检索**写作当时近期**的行业新闻、政策或数据。
 
 - 优先政府网站、行业权威机构、权威媒体；尽量追溯原文。
-- 打开原文核对，不能只凭搜索摘要或聚合页转述。
+- 打开原文核对，不能只凭搜索摘要或聚合页转述——用 AnySearch 的 `extract` 取全文（见下）。
 - 关键词按行业、服务对象、业务环节组织；一家企业至少两轮不同角度的检索。
 - 允许多篇之间共享同一轮背景检索，但每篇的落点必须不同（见 §5）。
 
-**缺企业资料时：必须自动补料，不要空手来问。** 用技能自带的检索封装（它会自己找到
-本机装好的 AnySearch 并调用，无需额外配置）：
+```bash
+# 0) 先确认 AnySearch 能不能用（打印解析到的命令；探测不到会直接报错）
+python scripts/anysearch_fill.py --show-cmd
+
+# 1) 检索：单条查询
+node "$HOME/.dsh/skills/anysearch/scripts/anysearch_cli.js" search "<查询>" -m 5 --zone cn --language zh-CN
+#    多个角度并行（1–5 条，单条失败不影响其它）
+node "$HOME/.dsh/skills/anysearch/scripts/anysearch_cli.js" batch_search \
+  --queries '[{"query":"<行业> 政策 2026"},{"query":"<行业> 市场规模 数据"}]'
+
+# 2) 原文核对：把候选链接抓成全文 Markdown 再读（不支持 PDF/图片等二进制）
+node "$HOME/.dsh/skills/anysearch/scripts/anysearch_cli.js" extract "<url>"
+```
+
+**缺企业资料时：必须自动补料，不要空手来问。** 用技能自带的封装（它会自己找到本机装好的
+AnySearch 并调用，无需额外配置；优先 Python CLI，缺 `requests` 时自动退到 Node CLI）：
 
 ```bash
 # 按企业名检索：会自动派生「介绍 / 主营业务 / 近期动态」几轮查询
 python scripts/anysearch_fill.py --company "<企业全称>" --max_results 5
 # 按行业检索：要行业现状与政策素材时用
 python scripts/anysearch_fill.py --industry "<行业名>" --max_results 5
+# 直接给查询词（要自己控制措辞时用）
+python scripts/anysearch_fill.py "<查询>" --max_results 5
 # 只想看它探测到了什么命令（排查用）
 python scripts/anysearch_fill.py --show-cmd
 ```
@@ -239,7 +270,7 @@ python scripts/anysearch_fill.py --show-cmd
 | 项目 | 要求 |
 |---|---|
 | 来源标题 | 原文标题，不改写 |
-| 真实链接 | 实际打开的 URL；不接受只有搜索页或转载页 |
+| 真实链接 | 实际打开的 URL；不接受只有搜索页或转载页。核对方式：AnySearch `extract` 抓到全文 |
 | 发布日期 | 文章的发布日 |
 | 事件日期或统计期 | 事件发生日或数据所属期间 |
 | 发布机构 | 政府／机构／媒体名称 |
@@ -267,9 +298,16 @@ python scripts/anysearch_fill.py --show-cmd
 可以采用已核实的稳定背景（如行业分工、服务对象构成、长期政策框架），并在稿外说明
 "本期未检索到可用的近期公开消息，改用已核实的稳定背景"。
 
-### 4.8 不能联网
+### 4.8 AnySearch 不可用
 
-写明限制：如"本次未能联网检索，正文未引用外部近期来源"。**不编造来源、链接、日期或统计数据。**
+先按顺序排查，**不要拿内置搜索顶替**：
+
+1. `python scripts/anysearch_fill.py --show-cmd` —— 看它是否找到了 AnySearch；
+   找不到就设 `ANYSEARCH_SKILL_DIR` 指向 `~/.dsh/skills/anysearch`。
+2. 直接用官方 CLI 跑一条 `search` 确认网络与 key 是否正常；
+   报错照抄到结论里（配额用尽、key 失效、网络不通要分开写）。
+3. 仍不可用，才在稿外写明限制：如"本次 AnySearch 不可用，未能联网检索，正文未引用外部近期来源"。
+   **不编造来源、链接、日期或统计数据。**
 
 ## 5. 每篇必须实质不同
 
@@ -928,7 +966,7 @@ media_publish {op:"backfill", recipeId:"sohu__publish-article", accountCode:"a-1
 | 步骤 | 需要的能力 | 缺了怎么办 |
 |---|---|---|
 | 1 读表格 | 读 Excel（本环境用 openpyxl） | 请用户导出 CSV／文本；**不凭猜测填写企业事实** |
-| 2 写稿 | 联网检索 + 写文本文件 | 按 §4.8 处理，稿外写明"未联网检索" |
+| 2 写稿 | 联网检索（**唯一通道 AnySearch**）+ 写文本文件 | 按 §4.8 排查；确不可用才在稿外写"AnySearch 不可用，未联网检索"；**不得改用内置 web_search** |
 | 2b 配科普稿 | 写文本文件 + 台账 JSON（纯标准库） | 台账目录写不了就用 `--ledger` 指到可写位置；**不要退回"手记方向"**（必然乱序） |
 | 3 出网页 | 写文本文件（+ 可选 Playwright 跑版式门禁） | 没 Playwright 时 `page_check.py` 的 C 组自动跳过，A/B 照跑并写明 |
 | 4 发自媒体 | 浏览器自动化（本环境是发布插件的 `media_publish` + recipe） | 没有发布能力 → **明确告知用户本环境不能发布**，交稿停下，不要手工代发 |
@@ -970,9 +1008,10 @@ media_publish {op:"backfill", recipeId:"sohu__publish-article", accountCode:"a-1
   翻案腔「不是…而是…」）+ 去广告腔（劝导口吻、绝对化承诺、第二人称、促销句式、感叹号）。
   移植自早期 news-draft-skill 的 gates.py（该技能已并入本技能，源码归档在 GitHub）；按新闻稿体裁把破折号与提示性冒号降为提醒，`--strict` 才硬错；
   第二人称与劝导类只在**引号之外**判（引述客户的话不算对读者说话）。
-- [`scripts/anysearch_fill.py`](scripts/anysearch_fill.py) —— **缺料自动补料**：调用本机 AnySearch
-  按企业名／行业名检索，自动派生多轮查询并遮蔽工商登记类字段（注册资本、法人、统一社会信用代码等）。
-  `--company "<全称>"` / `--industry "<行业>"` / `--show-cmd`。
+- [`scripts/anysearch_fill.py`](scripts/anysearch_fill.py) —— **联网查询的唯一入口**：调用本机 AnySearch
+  按企业名／行业名／自由查询检索，自动派生多轮查询并遮蔽工商登记类字段（注册资本、法人、统一社会信用代码等）。
+  `--company "<全称>"` / `--industry "<行业>"` / `"<查询>"` / `--show-cmd`。
+  需要抓原文全文时直接用 AnySearch 官方 CLI 的 `extract`（见 §4.2）。
 - [`scripts/publish_params.py`](scripts/publish_params.py) —— 作业清单合成：**表格（编号/域名/企业名称）
   ＋ 稿件（标题/正文）＋ 网页清单（短 ID）→ `jobs.json`**；带身份交叉核验（该行企业名称必须出现在稿件里，
   否则报错停下，避免把链接写到别的企业那一行）与逐平台标题长度检查。

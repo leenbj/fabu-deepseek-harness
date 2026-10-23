@@ -40,7 +40,10 @@ git clone https://github.com/<你>/fabu-deepseek-harness.git \
 依赖：
 
 - Python 3.12+，`openpyxl`（读写表格）
-- AnySearch 技能（可选，缺企业资料时自动检索补料；不在则跳过并在稿外注明）
+- **AnySearch 技能（必需 · 联网查询的唯一通道）**：行业近期消息、政策与数据、原文核对、缺料补料
+  全部通过它完成（`search` / `batch_search` / `extract`）。**不使用宿主内置的 `web_search` / `web_fetch`**——
+  内置搜索依赖 DeepSeek 凭据，在只配了其它模型供应商（如 volcengine）的机器上必然失败。
+  缺它时按 SKILL §4.8 排查并如实记录限制，不拿内置搜索顶替。
 - `playwright` + chromium（可选，仅网页版式组需要；缺失时自动跳过并在结论里写明）
 
 环境变量：

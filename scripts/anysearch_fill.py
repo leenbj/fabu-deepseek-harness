@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """AnySearch 接入层：把联网检索包成一个函数，供 news_draft.py 和 agent 使用。
 
+这是本技能**唯一的联网查询通道**（不使用宿主内置的 web_search / web_fetch，
+后者依赖 DeepSeek 凭据，在非 DeepSeek 模型的机器上必然失败）。
+
 优先复用已安装的 AnySearch 官方 skill（~/.dsh/skills/anysearch/scripts/anysearch_cli.py），
-找不到就按 Node.js 版、PowerShell 版依次回退；全都不可用时返回明确提示，
-由 agent 改用自带的 web_search 工具补齐材料。
+找不到就按 Node.js 版、PowerShell 版依次回退；runtime.conf 里的 <skill_dir> 占位符会先展开，
+命令不可用时自动跳过继续探测。全都不可用时抛 AnySearchError，由调用方按 SKILL §4.8 记录限制、
+**不得**改用内置搜索顶替。
 
 环境变量：
   NEWS_ANYSEARCH_CMD  自定义检索命令（argv 字符串，优先于一切探测）
@@ -149,6 +153,22 @@ def _posix_shell_ready() -> bool:
     return all(shutil.which(x) for x in ("bash", "jq", "curl"))
 
 
+def _expand_placeholders(value: str, base: Path) -> str:
+    """官方 runtime.conf 里的 <skill_dir> 是占位符，这里替换成真实目录。"""
+    for token in ("<skill_dir>", "${SKILL_DIR}", "%SKILL_DIR%", "$SKILL_DIR"):
+        value = value.replace(token, str(base))
+    return value
+
+
+def _split_command(value: str) -> list[str]:
+    """切命令行。Windows 下必须 posix=False，否则反斜杠会被当成转义符吃掉
+    （C:\\Users\\... 会变成 C:Users...，导致 FileNotFoundError）。"""
+    try:
+        return shlex.split(value, posix=(os.name != "nt"))
+    except ValueError:
+        return shlex.split(value)
+
+
 def _runtime_conf_command(base: Path) -> list[str] | None:
     """官方 skill 可能生成 runtime.conf，里面有现成的 Command 行。"""
     conf = base / "runtime.conf"
@@ -162,8 +182,24 @@ def _runtime_conf_command(base: Path) -> list[str] | None:
         if re.match(r"\s*(Command|command|cmd)\s*[:=]", line):
             value = re.split(r"[:=]", line, maxsplit=1)[1].strip().strip('"').strip("'")
             if value:
-                return shlex.split(value)
+                return _split_command(_expand_placeholders(value, base))
     return None
+
+
+def _command_usable(argv: list[str] | None) -> bool:
+    """命令能不能真的跑：可执行文件要能找到，脚本要存在。"""
+    if not argv:
+        return False
+    exe = argv[0]
+    found = exe if Path(exe).exists() else shutil.which(exe)
+    if not found:
+        return False
+    scripts = [a for a in argv[1:] if not a.startswith("-")]
+    if scripts:
+        target = Path(scripts[0])
+        if not target.exists():
+            return False
+    return True
 
 
 @lru_cache(maxsize=1)
@@ -176,12 +212,12 @@ def resolve_cli() -> tuple[str, ...] | None:
            or os.environ.get("ANYSEARCH_CMD", "")
            or str(_read_config().get("anysearch_cmd", ""))).strip()
     if raw:
-        return tuple(shlex.split(raw))
+        return tuple(_split_command(raw))
     base = _anysearch_dir()
     if base is None:
         return None
     conf = _runtime_conf_command(base)
-    if conf:
+    if _command_usable(conf):
         return tuple(conf)
     scripts = base / "scripts"
     py = scripts / "anysearch_cli.py"
@@ -267,7 +303,8 @@ def search(query: str, max_results: int = 5, timeout: int = 90) -> str:
         raise AnySearchError(
             "找不到 AnySearch 检索命令。把官方 skill 装到本 harness 的 skill 目录（如 "
             "~/.dsh/skills、~/.claude/skills、~/.opencode/skills，或用 ANYSEARCH_SKILL_DIR 指定），"
-            "或用 NEWS_ANYSEARCH_CMD 指定命令，或改用本 harness 自带的联网检索工具。")
+            "或用 NEWS_ANYSEARCH_CMD 指定命令。注意：本技能不以宿主内置的 web_search 作为替代；"
+            "排查后仍不可用，请按 SKILL §4.8 在稿外如实记录联网限制。")
     argv = list(cli) + ["search", query, "--max_results", str(max(1, min(10, max_results)))]
     env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
     try:
@@ -325,7 +362,8 @@ def search_company(company: str, profile: str = "", max_results: int = 5,
         notes.append(f"⚠ 检索结果里没有任何一条命中企业全称「{company}」。"
                      "按“名字相近但不是同一家就整条丢掉”的规则，这些材料都不能当成本企业的事实；"
                      "企业自身情况宁可不写或写少，行业与中文域名部分照常写。"
-                     "需要企业实况时，改用本 harness 自带的联网检索工具再查，"
+                     "需要企业实况时，用 AnySearch 换角度再查"
+                     "（`anysearch_cli.js search \"<全称> <业务关键词>\"`，或 `extract` 打开企业官网／公示页读原文），"
                      "或让用户补「企业信息资料」。")
     return blob, errors, notes
 
