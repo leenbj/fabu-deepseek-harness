@@ -8,7 +8,8 @@ description: >-
   同批任意两篇按字符 5-gram Jaccard 计算的正文相似度不超过 10%，并附实测值；
   **每生成一篇文章都要生成与它对应的网页**——版式复刻指定参考页（北京知识产权研究会官网文章详情页），
   只把标题、分类、时间、正文换成该篇稿件，产出单文件、可离线打开的 .html；
-  按负载把稿件分配到注册表里的发布账号，用发布脚本投到自媒体（搜狐号/头条号/CSDN），
+  每篇文章**一次发多个媒体**（搜狐号＋头条号各一次），并把稿件**分散**到注册表里不同的已登录账号
+  （**一批一个账号一个发布单元，不把一个账号发多篇；同一平台不重复投**），
   再把网页上传到 FTP 服务器，最后把**自媒体链接与网页链接**一并回写来源表格
   （写作完成写「已写作」，两个链接都到位才写「已发布」）。
   Use when the user asks to 写中文域名企业新闻、企业官网启用中文域名稿件、域名新闻稿、
@@ -25,7 +26,7 @@ whenToUse: >-
 metadata:
   display-name: 中文域名企业新闻全流程（写稿·网页·自媒体·FTP·回写）
   language: zh-CN
-  version: 2.1.0
+  version: 2.3.0
   scope: table-read + draft + kepu-article + webpage + authorized-selfmedia-publish + authorized-ftp-delivery + authorized-table-writeback
   pipeline: table -> draft(+kepu) -> webpage -> selfmedia -> ftp -> writeback (see references/pipeline.md)
   pipeline-gate-rule: 每一阶段的门禁不过就不进下一步；任一阶段失败停在原地报告，不跳过、不手工补值
@@ -59,14 +60,16 @@ metadata:
   article-page-delivery-rule: upload only when the user asks and gives a target; verify through the real domain before reporting links
   page-site-index: ~/.dsh/fabu-deepseek-harness/site-index.json -- every generated page is upserted here; used as the cross-batch internal-link pool
   page-sidebar-rule: 最新动态 = random sample of --sidebar-count (default 10) from the site index, excluding self, displayed newest-first; 下一篇 = first of that sample; --seed page keeps each page stable across re-runs
-  publish-recipes: sohu__publish-article(a-1,title<=72,declaration) / toutiao__publish-article(a-2,b-1,title<=30,keyword,headless:false) / csdn__publish-article(c-1,title<=100,tag)
+  publish-recipes: sohu__publish-article(title<=72,declaration) / toutiao__publish-article(title<=30,keyword,headless:false) / csdn__publish-article(title<=100,tag) -- pick by the account's registry media; recipe account_codes is metadata only
   publish-title-limits: sohu 72 / toutiao 30 / csdn 100 -- never rewrite the headline per platform
   publish-link-availability: csdn immediate; sohu & toutiao only after review (later_backfill); preview links do not count
   publish-dry-run-first: media_publish defaults to dryRun:true -- always rehearse, then publish with dryRun:false
   table-status-machine: 未写作 -> 已写作 -> 已发布
   table-writeback-whitelist: A(编号) / B(状态) / 媒体列(账号代号) / 末尾「发布链接」(自媒体) / 末尾「网页链接」(FTP)
   table-writeback-script: scripts/table_writeback.py
-  account-assignment: greedy least-loaded by CUMULATIVE published count; deterministic tie-break by account code
+  account-spread-rule: 每篇都要发到搜狐号和头条号各一次（cross-platform multi-post REQUIRED）；同一平台内同一篇只发一个账号；每个账号本批只接 1 个单元，never pile several units on one account
+  account-assignment: per-platform round-based spread (each unit takes 1 sohu + 1 toutiao account; at most 1 unit per account per round) + least-CUMULATIVE-load choice within the round; deterministic tie-break by account code; a 2nd round is allowed only when units > single-batch capacity (min account count across platforms) and MUST be disclosed in the delivery note
+  account-capacity: single-batch capacity = min(account count per platform); with 5 sohu + 7 toutiao => 5 units strictly spread per batch
   account-assignment-script: scripts/assign_accounts.py
   account-assignment-load-source: ledger (preferred) > tool run records (misses manual publishes) > this-batch only
   account-pool: derived from the account registry on every run (auto-adapts as accounts are added); platform filter is the only manual knob
@@ -84,8 +87,11 @@ metadata:
 1. **四个环节都要有用户授权，各管各的。** 写稿随时可做；**发布到自媒体**、**上传到 FTP**、
    **回写来源表格**这三件事，各自都需要用户明确要求并给出目标（账号／主机／授权回写）。
    用户没要求就不要做——尤其不要"顺手发一下"或"顺手传一下"。
-2. **只发到注册表里已登录的账号，一稿一账号。** 不注册新账号、不代他人投放、不买卖媒体资源；
-   绝不为了"覆盖更多平台"把同一篇稿复制到多个账号（重复内容不是均衡，见 §7.2）。
+2. **只发到注册表里已登录的账号；每篇多发媒体，但同一平台不重复投。**
+   案例稿与科普稿**每篇都要发到搜狐号和头条号各一次**（一次任务覆盖多个媒体）；
+   同一平台内一篇稿只发一个账号，绝不把同一篇稿在同平台复制给多个账号。
+   **同一批不得把多个单元堆给同一个账号**：每个账号本批只接 1 个单元
+   （例外只有"单元数 > 单批容量"，且必须写进交付说明，见 §7.2）。
 3. **原始资料默认只读。** Excel、文字资料、企业案例默认只读打开：不覆盖、不改文件名、不改列名、
    不改白名单以外的任何单元格。需要记录进度或摘要时，写到新建的独立文件里。
    **唯一例外**：用户明确授权回写来源表格时，只允许按 §7.3 的白名单回写
@@ -106,7 +112,7 @@ metadata:
 | 2 | 写稿 | §4–§6 | 每篇 `NN-*-稿件.txt` | `draft_check.py` 全绿 + `similarity_check.py` 达标 |
 | 2b | **配科普稿** | §6.4 + `kepu_plan.py` → `kepu_check.py` | 每篇一个 `NN-科普-方向K-*.txt` | 方向按序轮换；`kepu_check.py` 全绿（正面性/篇幅/数据/标题） |
 | 3 | 出网页 | `render_pages.py --short-id`（案例稿与科普稿各跑一次）+ `page_check.py` | `article-detail/<8位ID>.html` + `_pages.json` / `_pages-科普.json` | `page_check.py` 全绿（两类页面都查，§7.5） |
-| 4 | 发自媒体 | `publish_params.py` → `assign_accounts.py` → `media_publish` | 每个账号：案例稿 + 科普稿 两条链接 | 案例稿先发、科普稿随后，同一账号；各自先 dry run；链接过审后回查（§7.6） |
+| 4 | 发自媒体 | `publish_params.py` → `assign_accounts.py` → `media_publish` | 每个单元（= 1 篇案例稿＋配对科普稿）× 搜狐号＋头条号各一条，共 4 条链接 | **每篇都发两个平台**；**一批一个账号一个单元**（容量 = 各平台账号数最小值，现为 5 个单元）；同一账号案例稿先发、科普稿随后；逐条先 dry run；链接过审后回查（§7.2、§7.6） |
 | 5 | 传网页 | `ftp_upload.py` | 远端 `article-detail/*.html`（两类页面一起传） | 用**域名**能打开、字节数与本地一致（§7.5） |
 | 6 | 回写表格 | `table_writeback.py`（+ `kepu_plan.py links`） | 状态 + 媒体列 + 发布链接 + 网页链接；科普链接进台账 | 先 `--dry-run`，再真写，脚本回读验证（§7.3） |
 
@@ -121,7 +127,7 @@ metadata:
   （**写稿必然连带给每篇配一篇科普稿**，见 §6.4；用户明确只要案例稿时也要确认是否跳过科普）；
 - 用户要求按 Excel／表格／文字资料批量生成企业新闻稿 → 从阶段 1 起；
 - 用户要求**每篇稿件再出一个网页**、或"照这个网页的样式把正文换掉" → §7.5；
-- 用户要求**把稿件发布到自媒体／按账号均衡发布** → §7.2 + §7.6（需已登录账号）；
+- 用户要求**把稿件发布到自媒体／按账号分散发布** → §7.2 + §7.6（需已登录账号）；
 - 用户要求**把网页上传到 FTP 服务器** → §7.5；
 - 用户要求**把发布状态、自媒体链接、网页链接回写来源表格** → §7.3；
 - 用户要求**跑完整流程**（"整个流程""一条龙"） → 从阶段 1 顺序执行到阶段 6。
@@ -159,6 +165,15 @@ Excel（.xlsx / .xls / .csv）、纯文字段落、企业案例说明；三者�
 ### 2.4 篇数
 
 用户要求几篇就交几篇。资料行数多于要求时，说明选取了哪几行及依据；不得自行增补企业凑数。
+
+**篇数要能落到账号上（发布环节的前置约束，写稿前就算清）**：发布是"一篇发多个媒体 ＋
+一批一个账号一个单元"，每篇要在一个搜狐号和一个头条号上各发一次。
+目前注册表 **12 个账号（搜狐号 5 ＋ 头条号 7）**，所以**一批最多 5 个单元（= 5 篇企业稿）能严格分散**，
+第 6 个单元起就要复用账号。
+用户要的篇数超过单批容量时，**写稿前就说明**："这批 N 篇 > 单批容量 5 个（受搜狐号 5 个账号限制），
+第 6 篇起会复用账号（用户允许，但会在交付说明里逐条写明），是否继续？"
+不要写完 20 篇才发现只能严格分散到 5 个单元。容量按注册表实时算
+（`min(各平台账号数)`），**不要照抄"5"这个数字**——账号会继续增加（见 §7.2）。
 
 ### 2.5 必须先问再写的情形
 
@@ -556,7 +571,9 @@ python scripts/similarity_check.py 01-科普-*.txt 02-科普-*.txt --threshold 1
 3. 缺料与限制说明：行业是否推断、是否有可用近期消息、是否联网、字数偏离原因；
 4. 各篇核心问题一句话，用于横向比对；
 5. 科普稿的方向编号与相似度实测值；
-6. 发布与上传结果：平台/账号/链接（或"审核中，待回填"）、网页链接与验证方式、表格与台账各写了什么。
+6. 发布与上传结果：平台/账号/链接（或"审核中，待回填"）、网页链接与验证方式、表格与台账各写了什么；
+7. **账号分配表**：`编号 → {搜狐: 账号, 头条: 账号} → 平台 → 轮次`，并写明"本批 N 个单元
+   落到每平台 N 个不同账号，**是否严格分散**"；若开了第 2 轮，逐条写明哪几个账号接了 2 个单元及原因（见 §7.2）。
 
 ### 7.1 文件保存
 
@@ -574,61 +591,100 @@ article-detail/<科普稿ID>.html
 两份清单 `_pages.json` / `_pages-科普.json` 互不覆盖。
 默认不写入、不覆盖原始资料文件。
 
-### 7.2 发布账号自动分配与均衡（默认不指定账号）
+### 7.2 发布账号分配：**一稿多平台** ＋ 本批**严格分散** ＋ 跨批均衡（默认不指定账号）
 
-**默认不需要为每一篇指定发布账号**：账号由账号池按负载自动分配，目标是让各账号的
-**累计发布篇数尽量相等**。完整契约见 [`references/account-assignment.md`](references/account-assignment.md)，
-参考实现 `scripts/assign_accounts.py`。
+**用户硬规则（2026-10-28 定，优先级最高，覆盖之前的单平台口径）**
 
-**账号池**：**每次分配都从发布账号注册表重新派生**，不要手写固定账号清单——账号会不断增加，
-手写清单必然过时。默认纳入全部登录态有效的账号；**平台筛选是唯一的人工开关**
-（例如只发搜狐号＋头条号、排除 CSDN），新增**同平台**账号自动纳入，账号数量变化无需改配置或代码。
+1. **每篇一次发多个媒体**：案例稿与配对科普稿，**每篇都要同时发到搜狐号和头条号**，
+   不要只发一个平台就收工。
+2. **分散执行**：一个账号本批只接一个发布单元，**不许把一个账号发多篇**；
+   尽量让每个已登录账号都分到任务。
+
+目前注册表 **12 个账号**（搜狐号 5 个、头条号 7 个），一次发布要同时占用 1 个搜狐号 ＋ 1 个头条号，
+所以**一批最多 5 个单元能严格分散**（= 账号数最少的那个平台 5 个），第 6 个单元就要复用账号。
+
+完整契约见 [`references/account-assignment.md`](references/account-assignment.md)，
+执行脚本 `scripts/assign_accounts.py`（分配是**机械动作**，必须用脚本，不要手工点名）。
+
+**分配单位是"发布单元"，不是单篇，也不是单次提交**
+
+```
+1 个发布单元 = 1 篇案例稿 ＋ 1 篇配对科普稿
+             × 每个平台发一次（默认 搜狐号 1 个账号 ＋ 头条号 1 个账号）
+             = 4 条发布（案例稿×2 平台、科普稿×2 平台）
+```
+
+- **同一平台内**：一个账号本批只接一个单元 → 同一篇稿不会在同一平台重复投；
+- **跨平台**：同一篇稿**必须**出现在搜狐号与头条号各一次——这是"多发媒体"，与"不重复投"不冲突；
+- 每个账号本批承接 **2 篇**（案例＋科普），负载按**篇**计（搜狐号日限 5 篇，一个单元占 2 篇）。
+
+**账号池**：**每次分配都从注册表 `~/.dsh/media-publish/accounts.yaml` 重新派生**，
+不要手写固定账号清单——账号会不断增加，手写清单必然过时。默认纳入全部**已登录**的账号；
+**平台筛选是唯一的人工开关**（`--only-media sohu,toutiao`），新增**同平台**账号自动纳入，
+数量变化无需改配置或代码。**未登录的账号不可用**，不得拿它凑数。
 登录态判据按证据分级，**以"跑一次 dry run 能走到提交前"为准**：
 通用检查命令对搜狐号实测有**假阴性**（报 invalid 而 dry run 14/14 全通），
 而"存在登录态文件"又不等于有效（实测有账号有文件却已登不上）。
 
-**扩容行为**：新账号（负载 0）会被持续喂到与其他账号追平，这是自动适应的正常表现；
-担心新账号短期发文过密时用 `--max-per-account` 加护栏。
+**算法（按轮分配，每个平台各自挑，可复现）**
 
-**均衡口径（最容易做错的一点）**：按账号的**累计已发布篇数**做负载，**不是"本批内轮询"**。
-只在本批内轮询的话，每一批都会从同一个账号开跑，长期仍然堆在靠前的账号上。
-
-**算法（贪心最小负载，可复现）**
-
-1. 负载 `load(a)` ＝ 该账号累计已发布篇数；
-2. 按稿件编号升序遍历本批每一篇，选 `load` **最小**的账号；
+1. 负载 `load(a)` ＝ 该账号**累计已发布篇数**（不是"本批内轮询"，否则每批都从同一个账号开跑）；
+2. 第 1 轮：按稿件编号升序遍历每个单元；对**每个平台**，在**该平台本轮还没接过单元**的账号里
+   选 `load` **最小**者；
 3. 并列时取**账号代号升序**——同一输入必得同一分配结果，可复现、可审计；
-4. 命中后 `load += 1`，继续下一篇；
-5. 当日已发数达到平台限额的账号从候选集中剔除，顺延到次小负载账号；
-   全部超限则**停下报告**，不要硬塞。
+4. 命中后 `load += 2`（案例＋科普）、该账号本轮出局，继续下一个单元；
+5. 只有当**单元数 > 单批容量**（各平台账号数的最小值）时才开第 2 轮（同一账号接第 2 个单元）；
+6. 剩余额度不足 2 篇（日限）的账号从本轮候选集中剔除，顺延到次小负载账号；
+   一个都分不出去则**停下报告**，不要硬塞；某个平台**根本没有可用账号**时直接报错，
+   **不要悄悄降级成单平台发布**。
 
-当篇数 ≥ 账号数且无限额约束时，**最终极差 ≤ 1**；若各账号历史负载本身差距过大，
-一次分配拉不平，只能靠后续批次逐步收窄——此时要把"分配前极差 / 分配后极差"一起记录。
+**N ≤ 单批容量时结果是确定的：N 个单元 → 每平台 N 个不同账号，本批没有任何账号接 2 个单元。**
+`--no-wrap` 可把第 5 条变成硬错误（超出容量直接报错并给出缺口）。
+
+**篇数超过容量怎么办（用户已定口径）**：允许开第 2 轮复用账号，
+但**必须在交付说明里写明**哪几个账号接了 2 个单元、为什么（N > 容量）。
+这是"允许的例外"，不是默认做法——**写稿之前就要算一下容量**：若用户要的篇数超过单批容量，
+先说清"这批只能严格分散到 X 个单元（受最少那个平台的 X 个账号限制），超出部分会复用账号"，
+不要写完 20 篇才发现。
 
 **负载来源（按可靠性，取第一个可得的）**
 
 | 优先级 | 来源 | 说明 |
 |---|---|---|
-| 1 | **台账**（每发一篇追加一行 `时间/编号/账号/平台/链接`） | 首选。可审计，且**不区分发布是脚本还是手工完成** |
+| 1 | **台账**（每发一条追加一行 `时间/编号/账号/平台/链接`） | 首选。可审计，且**不区分发布是脚本还是手工完成** |
 | 2 | 发布工具的运行记录 | 次选。**会漏计手工驱动的发布**——实测 5 篇里有 2 篇如此，导致 a-2 少算 1、b-1 少算 1 |
-| 3 | 仅本批均衡 | 兜底。**必须在交付说明里写明**"历史计数不可得，本次仅做到本批均衡"，不得假装已全局均衡 |
+| 3 | 仅本批 | 兜底。**必须在交付说明里写明**"历史计数不可得，本次仅做本批分散"，不得假装已全局均衡 |
 
-**两条不许做的事**
+> 多平台后**同一篇稿在两个平台各有一条记录**，台账要按「编号＋平台」分行记，
+> 否则一个单元被数成 1 条、账号负载会少算一半。
 
-- **一稿一账号**：绝不为了"覆盖更多平台"把同一篇稿复制到多个账号（重复内容不是均衡）；
-- 不为了记账号而擅自新增表格列（媒体列不在 §7.3 白名单内）。
+**三条不许做的事**
+
+- **不许在同一平台把同一篇稿投给多个账号**（同平台重复内容没有意义，只算分散失败）；
+- **不许把本批多个单元堆到同一个账号**（这是用户明确禁止的），也不许因为"某账号更熟"就例外；
+- 不为了记账号而擅自新增表格列（媒体列不在 §7.3 白名单内，账号以台账为准）。
 
 ```bash
-# 分配本批（台账为负载来源）
+# 分配本批（台账为负载来源；--numbers 传的是"单元编号"= 稿件编号，一个编号=一个单元）
 python scripts/assign_accounts.py --accounts accounts.json --ledger 发布台账.jsonl \
-    --numbers 79,80,81,82,83,84
+    --numbers 1,2,3,4,5 --only-media sohu,toutiao
+
+# 5 个单元 → 搜狐侧 5 个不同账号 + 头条侧 5 个不同账号（报告里打印"分散判定"）
+python scripts/assign_accounts.py --accounts accounts.json --numbers 1,2,3,4,5
+
+# 禁止复用：超出单批容量直接报错，不硬塞
+python scripts/assign_accounts.py --accounts accounts.json --numbers 1,2,3,4,5,6 --no-wrap
 
 # 没有台账时退到运行记录（会漏计手工发布，输出里会带提示）
 python scripts/assign_accounts.py --accounts accounts.json --from-runs "<运行记录目录>" --numbers 1,2,3
 
-# 自测：验证均衡与可复现性质
+# 自测：多平台分配、容量边界与可复现性
 python scripts/assign_accounts.py --self-test
 ```
+
+`--json` 输出的 `assignment` 每项形如
+`{"number": 1, "accounts": {"sohu": "a-1", "toutiao": "a-2"}, "round": 1}`——
+后续发布逐平台取 `accounts[平台]` 即可，不要用旧的单值 `account` 字段。
 
 ### 7.3 表格回写与状态机（仅在用户授权时执行）
 
@@ -638,7 +694,7 @@ python scripts/assign_accounts.py --self-test
 |---|---|---|
 | 未写作 | 表格原样（或该格为空） | — |
 | **已写作** | 该行稿件**已交付**（含稿外说明与自检结论） | 编号列 |
-| **已发布** | 自媒体已发出**且**网页已上线，**两个链接都到位** | 媒体列＝发布账号代号；「发布链接」＝自媒体链接；「网页链接」＝网页地址 |
+| **已发布** | 自媒体已发出**且**网页已上线，**两个链接都到位** | 媒体列（若有）＝发布账号代号；「发布链接」＝自媒体链接；「网页链接」＝网页地址 |
 
 只到位一侧（例如自媒体还在审核、或网页没传）→ 状态**留在 `已写作`**，把已经到手的那一侧链接先写上，
 交付说明写明缺哪一侧、为什么。**不得为了让状态前进而填预览链、猜测链接或留空冒充完成。**
@@ -649,9 +705,13 @@ python scripts/assign_accounts.py --self-test
 |---|---|
 | 编号列 | 该行稿件编号 |
 | 状态列 | `已写作` 或 `已发布` |
-| 媒体列（各平台账号列，表头是账号代号；**表里没有就跳过，不得为记账号擅自新增列**） | 实际发布使用的账号代号，如 `a-1`、`a-2`、`b-1`、`c-1` |
+| 媒体列（各平台账号列，表头是账号代号；**表里没有就跳过，不得为记账号擅自新增列**） | 实际发布使用的账号代号，如 `a-1`（搜狐侧）、`a-2`（头条侧）等（**以注册表为准，12 个账号均可出现**）；一篇稿在两个平台各占一个账号列 |
 | 表格末尾新增「发布链接」列 | 自媒体文章的公开链接（脚本 `--link`） |
 | 表格末尾新增「网页链接」列 | FTP 上该篇网页的公开地址（脚本 `--site-link`） |
+
+**当前这批来源表格没有媒体列**（只有 编号/状态/域名/公司名称/公司简称/企业资料/发布链接/网页链接）：
+那就**不写媒体列、也不加列**，账号归属一律记进**台账**（`发布台账.jsonl`），
+并在交付说明里逐篇列 `编号 → 账号 → 平台 → 两个链接`。
 
 两个链接列是**两个不同的东西**，不要混在一列里：自媒体链接指向平台文章页，
 网页链接指向你自己服务器上的 `article-detail/<ID>.html`。
@@ -845,7 +905,9 @@ FTP_PASS=... python scripts/ftp_upload.py --local-dir "<项目文件夹>/article
 ### 7.6 发布到自媒体（用户授权后，脚本执行）
 
 第 4 阶段。**先有用户授权、再有已登录账号，才动手。** 完整步骤与失败处理见
-[`references/pipeline.md`](references/pipeline.md) 第 4 节；账号分配规则见 §7.2，登录态保护见 §7.4。
+[`references/pipeline.md`](references/pipeline.md) 第 4 节；账号分配规则见 §7.2（**一批一个账号一个单元**），
+登录态保护见 §7.4。**12 个账号都还没登录时，分配会停在"无可用账号"——先去登录，不要绕过。**
+某个平台一个可用账号都没有时，脚本会直接报错（不会降级成单平台发布）。
 
 ```bash
 # 1) 合成作业清单：表格 + 稿件 + 网页清单 → jobs.json（正文逐字来自稿件，不要手抄）
@@ -853,19 +915,26 @@ python scripts/publish_params.py --dir "<项目文件夹>" --xlsx "<来源表格
     --manifest "<项目文件夹>/article-detail/_pages.json" \
     --site-base "http://<站点域名>/article-detail/" --out jobs.json
 
-# 2) 分配账号（按累计已发布篇数，负载最轻者优先）
-python scripts/assign_accounts.py --accounts accounts.json --ledger 发布台账.jsonl --numbers 1,2
+# 2) 分配账号：每个单元在搜狐、头条各取一个账号（同一账号本批只接一个单元）
+python scripts/assign_accounts.py --accounts accounts.json --ledger 发布台账.jsonl \
+    --numbers 1,2,3 --only-media sohu,toutiao
 ```
 
-然后对每一篇：**先彩排、再真发**。
+然后对每个单元：**逐平台、逐篇，先彩排、再真发**。一个单元 4 条发布 = 2 篇 × 2 平台，
+账号取自分配结果的 `accounts.sohu` / `accounts.toutiao`：
 
 ```
 # 彩排：media_publish 默认 dryRun:true —— 会填完表单并截图，但跳过提交
-media_publish {op:"run", recipeId:"sohu__publish-article", accountCode:"a-1",
-               params:{title:"<标题>", body:"<正文，\n 分段>"}, dryRun:true}
+# recipe 由账号所属平台决定（sohu → sohu__publish-article，toutiao → toutiao__publish-article）
+media_publish {op:"run", recipeId:"sohu__publish-article", accountCode:"<accounts.sohu>",
+               params:{title:"<案例稿标题>", body:"<正文，\n 分段>"}, dryRun:true}
 # 真发：必须显式 dryRun:false
-media_publish {op:"run", recipeId:"sohu__publish-article", accountCode:"a-1", params:{...}, dryRun:false}
-# 过审后回查真实链接（搜狐/头条必须回查；CSDN 发布即得）
+media_publish {op:"run", recipeId:"sohu__publish-article", accountCode:"<accounts.sohu>", params:{...}, dryRun:false}
+# 同一单元切到头条号再走一遍（头条 headless 必须 false）
+media_publish {op:"run", recipeId:"toutiao__publish-article", accountCode:"<accounts.toutiao>",
+               params:{title:"<标题>", body:"<正文>", keyword:"<配图检索词>"}, dryRun:false}
+# 科普稿重复以上四步（同一对账号，案例稿之后）
+# 过审后回查真实链接（搜狐/头条必须回查；CSDN 发布即得），按「编号＋平台」各查一次
 media_publish {op:"backfill", recipeId:"sohu__publish-article", accountCode:"a-1", title:"<标题>"}
 ```
 
@@ -873,17 +942,34 @@ media_publish {op:"backfill", recipeId:"sohu__publish-article", accountCode:"a-1
 
 | 平台 | 账号 | 标题上限 | 额外参数 | headless | 链接何时能拿到 |
 |---|---|---|---|---|---|
-| 搜狐号 | `a-1` | 72 字 | `declaration`（默认「无需声明」） | 可用 | **过审后**回查（`later_backfill`） |
-| 头条号 | `a-2`、`b-1` | **30 字** | `keyword`（免费图库检索词，必配封面图） | **必须 false** | **过审后**回查 |
-| CSDN | `c-1` | 100 字 | `tag` | 可用 | **发布即得**（`immediate`） |
+| 搜狐号 | 注册表里 `media: sohu` 的账号（当前 `a-1`、`b-1`、`c-1`、`e-1`、`f-1`） | 72 字 | `declaration`（默认「无需声明」） | 可用 | **过审后**回查（`later_backfill`） |
+| 头条号 | 注册表里 `media: toutiao` 的账号（当前 `a-2`、`b-2`、`c-2`、`e-2`、`f-2`、`d-2`、`g-2`） | **30 字** | `keyword`（免费图库检索词，必配封面图） | **必须 false** | **过审后**回查 |
+| CSDN | 仅当注册表里确有 `media: csdn` 的已登录账号时使用（当前**没有**） | 100 字 | `tag` | 可用 | **发布即得**（`immediate`） |
+
+- **账号代号一律以注册表为准，不要照抄上面这份快照。** 表里的代号只是当前 12 个账号的现状：
+  旧版本的"`a-1` 搜狐 / `a-2`、`b-1` 头条 / `c-1` CSDN"已经**过时**——现在 `b-1` 是搜狐号，
+  `c-1` 是搜狐号、`c-2` 是头条号，注册表里没有 CSDN 账号。
+- recipe 里的 `account_codes` 只是元数据（记录当初录制时用的账号），**不是派活白名单**；
+  派哪个账号看 §7.2 的分配结果。
+- 每个账号按自己的 `media` 选 recipe：`sohu__publish-article` / `toutiao__publish-article` /
+  `csdn__publish-article`。**同一个单元的两篇用同一个 recipe、同一个账号。**
+- 稿件标题按 §6 H2 本来就在 30 字以内，科普稿按 §6.4 也压在 30 字以内，
+  所以搜狐号（72）与头条号（30）都能直接发；`publish_params.py` 会逐平台标出是否超限。
+- 搜狐号每账号每日限 5 篇（recipe `daily_limit`）；头条的 `headless` 必须是 `false`，
+  headless 发布会**静默拦截**。
 
 **硬性要求**
 
-1. **成对发布、同一账号**：一个"发布单元" = 一篇案例稿 ＋ 它配对的科普稿，两篇**发到同一个账号同一个平台**；
-   **顺序固定：案例稿先发，科普稿随后**（间隔按平台自然节奏，不要两篇同时提交）。
+1. **成对 + 多平台**：一个"发布单元" = 一篇案例稿 ＋ 它配对的科普稿；
+   **每篇都要发到搜狐号和头条号各一次**（每篇 2 条），所以一个单元共 **4 条发布**。
+   同一稿在**同一个平台内只发一个账号**，但**必须出现在两个平台**——这是"一次发多个媒体"的要求。
+   同一个账号内的顺序固定：**案例稿先发，科普稿随后**（间隔按平台自然节奏，不要两篇同时提交）；
    科普稿的论点是为案例稿做背景铺垫的，倒过来发就失去意义。
-2. **一稿一账号**：绝不为了覆盖更多平台把同一篇（或同一对）发到多个账号（重复内容不是均衡）。
-   负载按**篇**计：一个单元给账号增加 2 篇的负载（搜狐号日限 5 篇，一批两个单元就会占满）。
+2. **一批一个账号一个单元（用户硬规则）**：本批每个发布单元在**每个平台**各占 1 个账号，
+   **同一账号本批只接 1 个单元**，不得把两个单元发给同一个账号。分配必须由 `assign_accounts.py`
+   产出，**不要手工点名账号**、不要"上一篇用了 a-1，这篇也用 a-1 吧"。
+   只有当 N > 单批容量（各平台账号数的最小值）时才会开第 2 轮复用，且**必须在交付说明里写明**
+   哪些账号接了 2 个单元。负载按**篇**计：一个单元给账号增加 2 篇的负载（搜狐号日限 5 篇）。
 3. **先 dry run**：没彩排过不许真发；`requireExplicitPublish` 下只有显式 `dryRun:false` 才会提交。
    两篇各自都要彩排——科普稿的标题、正文、配图关键词与案例稿不同，不能只彩排一篇。
 4. **不改标题适配平台**：案例稿标题按 §6 本来就在 30 字内，科普稿按 §6.4 也压在 30 字内，三平台可直接用；
@@ -935,16 +1021,24 @@ media_publish {op:"backfill", recipeId:"sohu__publish-article", accountCode:"a-1
    （同时传 `--manifest` 与 `--kepu-manifest`），确认每篇案例稿都配到了科普稿、
    编号匹配到正确的表格行、**身份交叉核验通过**（该行企业名称出现在稿件里）、
    案例稿与科普稿逐平台标题长度都适配；有 FAIL 或域名不一致的"注意"就停下问用户；
-10. **彩排**（发布前）：**两篇都要**先 `media_publish ... dryRun:true`，
-   确认走到提交前（run 目录里能看到填好的表单与截图），再显式 `dryRun:false`；
-   顺序是案例稿先、科普稿后，同一账号；
-11. **上传并验证**（用户要求时）：`ftp_upload.py` 传完逐文件核 SIZE（案例稿与科普稿页面一起传），
+10. **账号分散核验**（发布前，机械核对，不靠肉眼）：跑
+    `python scripts/assign_accounts.py --accounts accounts.json --ledger ... --numbers <本批编号> --only-media sohu,toutiao`，
+    确认报告里 **"分散判定"** 显示每平台 N 个不同账号、且**没有**"有账号接到多个单元"的警告；
+    出现复用警告（N > 单批容量）时，先确认交付说明已写明，再继续；
+    分配结果里的账号必须是**注册表里已登录**的账号，**同一平台内一个账号不得出现两次**（除已声明的第 2 轮）；
+    并确认**每个单元都同时拿到了搜狐和头条账号**（缺平台＝没完成"一稿多发媒体"）。
+    随后逐平台核对所用 recipe 一致（sohu→`sohu__publish-article`，toutiao→`toutiao__publish-article`）；
+11. **彩排**（发布前）：**两篇都要**先 `media_publish ... dryRun:true`，
+    确认走到提交前（run 目录里能看到填好的表单与截图），再显式 `dryRun:false`；
+    顺序是案例稿先、科普稿后，同一账号；
+12. **上传并验证**（用户要求时）：`ftp_upload.py` 传完逐文件核 SIZE（案例稿与科普稿页面一起传），
     再**用真实域名打开**确认 200；只报"已上传"不算完成；
-12. **回写与记账**（已授权时）：案例稿先 `table_writeback.py --batch ... --dry-run` 复核将改的单元格，
+13. **回写与记账**（已授权时）：案例稿先 `table_writeback.py --batch ... --dry-run` 复核将改的单元格，
     再真写（脚本自动备份 + 回读验证），核对只改了白名单单元格；
     科普稿用 `kepu_plan.py links --json links.json` 把四个链接记进台账；
-13. 交付前重读成品，删掉任何制作过程用语，并按 §7 的稿外清单写清楚
-    **本地网页 / 已上线网页链接 / 自媒体链接** 三者的状态，以及科普稿的方向与构造数据标注。
+14. 交付前重读成品，删掉任何制作过程用语，并按 §7 的稿外清单写清楚
+    **本地网页 / 已上线网页链接 / 自媒体链接** 三者的状态，以及科普稿的方向与构造数据标注；
+    还要写清**本批账号分配表**（编号 → 账号 → 平台 → 轮次）与"是否严格分散"。
 
 自检结论要如实写明：通过了哪些项、哪些项因资料或联网条件限制无法核验；
 定量项要写出**实测数值与所用口径**，不能只写"已检查相似度"。
@@ -969,7 +1063,7 @@ media_publish {op:"backfill", recipeId:"sohu__publish-article", accountCode:"a-1
 | 2 写稿 | 联网检索（**唯一通道 AnySearch**）+ 写文本文件 | 按 §4.8 排查；确不可用才在稿外写"AnySearch 不可用，未联网检索"；**不得改用内置 web_search** |
 | 2b 配科普稿 | 写文本文件 + 台账 JSON（纯标准库） | 台账目录写不了就用 `--ledger` 指到可写位置；**不要退回"手记方向"**（必然乱序） |
 | 3 出网页 | 写文本文件（+ 可选 Playwright 跑版式门禁） | 没 Playwright 时 `page_check.py` 的 C 组自动跳过，A/B 照跑并写明 |
-| 4 发自媒体 | 浏览器自动化（本环境是发布插件的 `media_publish` + recipe） | 没有发布能力 → **明确告知用户本环境不能发布**，交稿停下，不要手工代发 |
+| 4 发自媒体 | 浏览器自动化（本环境是发布插件的 `media_publish` + recipe）；**每个平台都要有一个已登录账号** | 没有发布能力 → **明确告知用户本环境不能发布**，交稿停下，不要手工代发；某平台缺账号 → 报错停下，**不要降级成单平台发布** |
 | 5 传 FTP | FTP 客户端（Python 标准库 `ftplib` 即可） | 传不了就说明原因并给出本地文件清单，不要谎报已上传 |
 | 6 回写与记账 | 写 Excel（openpyxl）+ 写台账 | 表格写不了就输出"待回写清单"让用户手工填；**不改白名单以外的格子** |
 
@@ -992,8 +1086,11 @@ media_publish {op:"backfill", recipeId:"sohu__publish-article", accountCode:"a-1
   自带备份、按行精确定位、白名单校验、幂等与唯一性检查；`--dry-run` 先预览将改动的单元格。
 - [`references/table-writeback.md`](references/table-writeback.md) —— 表格状态机与回写白名单、定位规则、
   幂等与冲突处理，以及本类表格的实测列义（表头可能写错或残留数据值，必须以逐列样例核对为准）。
-- [`references/account-assignment.md`](references/account-assignment.md) —— 发布账号自动分配与均衡：
-  账号池构成、按累计负载的贪心分配、可复现的并列规则、每日限额、负载来源分级（台账优先）、输出与记录要求。
+- [`references/account-assignment.md`](references/account-assignment.md) —— 发布账号分配：**一稿多平台**
+  （每篇都发搜狐号＋头条号各一次）＋ **本批严格分散**（一批一个账号一个发布单元，不把一个账号发多篇）
+  ＋ 跨批均衡（同轮内按累计负载挑账号、可复现的并列规则）、
+  当前 12 个账号的注册表现状与单批容量（5 个单元）、超容量时的第 2 轮复用与声明要求、每日限额、
+  负载来源分级（台账优先，按「编号＋平台」分行记）、输出与记录要求。
 - [`references/pipeline.md`](references/pipeline.md) —— **端到端作业手册**：七步总览表（含 2b 科普）、每步的命令与通过标准、
   平台差异表（标题上限/额外参数/headless/链接何时可得）、先彩排再真发的发布步骤、回到哪一步续跑、交付说明模板。
 - [`references/kepu-directions.md`](references/kepu-directions.md) —— **科普稿 6 个方向的知识库**：
@@ -1015,9 +1112,11 @@ media_publish {op:"backfill", recipeId:"sohu__publish-article", accountCode:"a-1
 - [`scripts/publish_params.py`](scripts/publish_params.py) —— 作业清单合成：**表格（编号/域名/企业名称）
   ＋ 稿件（标题/正文）＋ 网页清单（短 ID）→ `jobs.json`**；带身份交叉核验（该行企业名称必须出现在稿件里，
   否则报错停下，避免把链接写到别的企业那一行）与逐平台标题长度检查。
-- [`scripts/assign_accounts.py`](scripts/assign_accounts.py) —— 分配器参考实现：
-  `--ledger` / `--from-runs` 取负载、`--numbers` 传本批编号、`--json` 机读输出；
-  `--self-test` 内置 10 项断言，覆盖均衡、可复现、失效账号排除、限额顺延与全部超限时报错。
+- [`scripts/assign_accounts.py`](scripts/assign_accounts.py) —— 分配器（**必须用它，不要手工点名账号**）：
+  本批**每个单元在搜狐、头条各取一个账号**（同轮内每账号最多 1 个单元，超单批容量才开第 2 轮并告警）；
+  `--ledger` / `--from-runs` 取负载、`--numbers` 传本批单元编号、`--no-wrap` 禁止复用、`--json` 机读输出；
+  `--self-test` 内置断言覆盖：一稿多平台（每单元拿齐各平台账号）、单批容量、复用边界、可复现、
+  失效账号排除、限额不足 2 篇时顺延、全部超限报错、缺平台账号直接报错。
 - [`scripts/render_pages.py`](scripts/render_pages.py) —— 稿件 → 网页：每篇稿件生成一个**单文件** `.html`，
   版式复刻参考页，样式／站点标识／分享图标字体全部内联；`--pattern 科普` 渲染科普稿并另写
   `_pages-科普.json`（不与案例稿清单互相覆盖）；`--dry-run` 预览、`--datetime` 统一时间、
@@ -1065,7 +1164,11 @@ media_publish {op:"backfill", recipeId:"sohu__publish-article", accountCode:"a-1
 - 用户没要求就擅自往服务器上传，或上传后**只报"已上传"不报可访问链接**、
   把没验证过的链接当可用链接交出去；
 - **未获用户授权就发布到自媒体、上传到 FTP 或回写表格**（三件事各需各的授权）；
-- **一稿多投**：把同一篇稿发到多个账号／平台凑覆盖面（重复内容不是均衡，见 §7.2）；
+- **一稿多投**：把同一篇稿发到多个账号／平台凑覆盖面；
+- **一个账号发多篇**：把本批的多个发布单元堆给同一个账号（用户明确禁止，见 §7.2）；
+  本批单元数 ≤ 可用账号数时却出现账号复用，或复用了账号却没在交付说明里写明；
+- **手工点名账号**绕过 `assign_accounts.py`（"上一篇是 a-1，这篇也用 a-1"）；
+- 把稿派给**注册表里没有或未登录**的账号，或按过时的账号清单（如"`c-1` 是 CSDN"）派活；
 - 为了适配某个平台的标题上限而**改写标题**，造成稿件、网页、发布内容三处不一致；
 - 跳过彩排直接提交，或把仍在审核的**预览链**当公开链接写进表格或交付说明；
 - 表格回写时把链接写到**未通过身份交叉核验**的行；
