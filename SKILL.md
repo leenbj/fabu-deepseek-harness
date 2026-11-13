@@ -60,10 +60,10 @@ metadata:
   article-page-delivery-rule: upload only when the user asks and gives a target; verify through the real domain before reporting links
   page-site-index: ~/.dsh/fabu-deepseek-harness/site-index.json -- every generated page is upserted here; used as the cross-batch internal-link pool
   page-sidebar-rule: 最新动态 = random sample of --sidebar-count (default 10) from the site index, excluding self, displayed newest-first; 下一篇 = first of that sample; --seed page keeps each page stable across re-runs
-  publish-recipes: sohu__publish-article(title<=72,declaration) / toutiao__publish-article(title<=30,keyword,headless:false) / csdn__publish-article(title<=100,tag) -- pick by the account's registry media; recipe account_codes is metadata only
+  publish-flows: ego-publish flows -- sohu__publish-article(title<=72,declaration) / toutiao__publish-article(title<=30,keyword,headless:false) / csdn__publish-article(title<=100,tag); pick by the account's registry media; flow account_codes is metadata only
   publish-title-limits: sohu 72 / toutiao 30 / csdn 100 -- never rewrite the headline per platform
   publish-link-availability: csdn immediate; sohu & toutiao only after review (later_backfill); preview links do not count
-  publish-dry-run-first: media_publish defaults to dryRun:true -- always rehearse, then publish with dryRun:false
+  publish-dry-run-first: egolite_publish defaults to dryRun:true -- always rehearse, then publish with dryRun:false; declaration「无需声明」is mandatory or submit silently fails
   table-status-machine: 未写作 -> 已写作 -> 已发布
   table-writeback-whitelist: A(编号) / B(状态) / 媒体列(账号代号) / 末尾「发布链接」(自媒体) / 末尾「网页链接」(FTP)
   table-writeback-script: scripts/table_writeback.py
@@ -83,6 +83,23 @@ metadata:
 本技能跑一条完整流水线：**读表格 → 写稿件 → 出网页 → 发自媒体 → 传网页到 FTP → 回写表格**。
 稿件本身是企业全称 ＋ 官网启用中文域名（".网址"）＋ 业务事实 ＋ 行业背景的客观新闻稿，
 每篇写一家企业，篇数由用户指定，默认每篇约 1000 中文字。
+
+> **v2 口径（2026-11-13 修订；与下文任何段落冲突时，以本节为准）**
+>
+> 1. **企业案例稿只在第 1 段写域名。** 中文域名这件事——企业全称＋「官网已启用」＋完整域名——
+>    **只出现在正文第 1 自然段**，并融入行文（该段≥100 字、≥2 句）。**第 2 段及以后不得再出现**
+>    「中文域名」「.网址」「域名」「网址」等任何与域名相关的表述，也不要在结尾再点一次。
+>    其余全部篇幅用于写**这家企业本身和它所在的行业**：产品与工艺、渠道与客户、产能与供应链、
+>    价格带与竞争、监管与合规、区域市场与出海等。
+> 2. **标题＝企业简称＋「官网」。** 标题必须出现**资料中已有的企业简称**字样和「官网」二字，
+>    句式、语序、落点由模型自行决定（可以是「×官网：……」「×官网里，……」「从×官网看……」）；
+>    不再要求企业全称进标题（全称只出现在正文第 1 段），标题仍 ≤30 字、不得只是裸域名。
+> 3. **发布工具＝ego-publish 插件**：`egolite_status` / `egolite_publish` / `egolite_script` /
+>    `egolite_observe` / `egolite_act`，流程 `sohu__publish-article`。下文凡出现 `media_publish`、
+>    `media_recipe`、`media_account` 的地方，一律按 §7.6 的 ego-publish 写法替换。
+> 4. **门禁照跑**：`draft_check.py`（H1/H7）、`similarity_check.py`（正文 5-gram ≤10%）、
+>    `style_check.py`。在「标题只用简称」口径下 H2a/H2c 会报失败，属**预期偏离**，
+>    在交付说明里写明即可，不要为了过脚本把简称改回全称。
 
 ## 0. 四条不可让步的边界
 
@@ -114,7 +131,7 @@ metadata:
 | 2 | 写稿 | §4–§6 | 每篇 `NN-*-稿件.txt` | `draft_check.py` 全绿 + `similarity_check.py` 达标 |
 | 2b | **配科普稿** | §6.4 + `kepu_plan.py` → `kepu_check.py` | 每篇一个 `NN-科普-方向K-*.txt` | 方向按序轮换；`kepu_check.py` 全绿（正面性/篇幅/数据/标题） |
 | 3 | 出网页 | `render_pages.py --short-id`（案例稿与科普稿各跑一次）+ `page_check.py` | `article-detail/<8位ID>.html` + `_pages.json` / `_pages-科普.json` | `page_check.py` 全绿（两类页面都查，§7.5） |
-| 4 | 发自媒体 | `publish_params.py` → `assign_accounts.py` → `media_publish` | 每个单元（= 1 篇案例稿＋配对科普稿）× 搜狐号＋头条号各一条，共 4 条链接 | **每篇都发两个平台**；**每账号每天 3 案例 + 2 科普**（当天最多 10 个单元，受 5 搜狐号 × 2 科普槽限制）；配对优先同号、槽位不够才拆号；逐条先 dry run；链接过审后回查（§7.2、§7.6） |
+| 4 | 发自媒体 | `publish_params.py` → `assign_accounts.py` → `egolite_publish` / `egolite_script` | 每个单元（= 1 篇案例稿＋配对科普稿）× 搜狐号＋头条号各一条，共 4 条链接 | **每篇都发两个平台**；**每账号每天 3 案例 + 2 科普**（当天最多 10 个单元，受 5 搜狐号 × 2 科普槽限制）；配对优先同号、槽位不够才拆号；逐条先 dry run；链接过审后回查（§7.2、§7.6） |
 | 5 | 传网页 | `ftp_upload.py` | 远端 `article-detail/*.html`（两类页面一起传） | 用**域名**能打开、字节数与本地一致（§7.5） |
 | 6 | 回写表格 | `table_writeback.py`（+ `kepu_plan.py links`） | 状态 + 媒体列 + 发布链接 + 网页链接；科普链接进台账 | 先 `--dry-run`，再真写，脚本回读验证（§7.3） |
 
@@ -390,7 +407,7 @@ python scripts/anysearch_fill.py --show-cmd
 
 以下七条逐条适用，任一条不满足即返工。
 
-**H1 首两段必须出现完整启用事实，并融入行文；不得独立成段。**
+**H1 首两段必须出现完整启用事实，并融入行文；不得独立成段。**（v2 口径：改为**只在第 1 自然段**出现，且第 2 段及以后不得再出现任何域名相关表述——见开篇 v2 节）
 
 第 1 或第 2 自然段必须出现三个要素齐全、且**逐字**出现的事实内容：
 
@@ -422,7 +439,7 @@ python scripts/anysearch_fill.py --show-cmd
 - **段位置**：第 1 或第 2 自然段；拖到第 3 段及以后即为不合格。
 - 可核对的检查项：`scripts/draft_check.py` 的 **H1a–H1g**。
 
-**H2 标题必须出现企业名称；全称放得下就用全称，放不下才用简称。**
+**H2 标题必须出现企业名称；全称放得下就用全称，放不下才用简称。**（v2 口径：改为**标题必须出现「企业简称＋官网」**，不再要求全称、句式自定——见开篇 v2 节）
 
 1. **名称不得缺席**：标题里必须出现企业全称，或资料中**已明确出现**的简称。
    标题其余部分过长时，精简其余部分（去掉修饰、缩短后半句），**不要删掉企业名称**。
@@ -936,21 +953,32 @@ python scripts/assign_accounts.py --accounts accounts.json --ledger 发布台账
 账号取自分配结果的 `accounts.sohu` / `accounts.toutiao`：
 
 ```
-# 彩排：media_publish 默认 dryRun:true —— 会填完表单并截图，但跳过提交
-# recipe 由账号所属平台决定（sohu → sohu__publish-article，toutiao → toutiao__publish-article）
-media_publish {op:"run", recipeId:"sohu__publish-article", accountCode:"<accounts.sohu>",
-               params:{title:"<案例稿标题>", body:"<正文，\n 分段>"}, dryRun:true}
+# 本机实际可用的发布工具是 ego-publish 插件（不是 media_publish）：
+#   egolite_status          查账号、已登录状态、可用 flow（sohu__publish-article 等）
+#   egolite_publish         按 flow 回放；默认 dryRun:true，真发必须显式 dryRun:false
+#   egolite_script          同一账号浏览器内的脚本通道，批量发布最快（一次可连发多篇）
+#   egolite_observe/act     页面观察与单步操作（排查失败、读列表状态与链接）
+
+# 彩排（默认 dryRun:true，填完表单并截图，停在提交前）
+egolite_publish {accountCode:"a-1", flow:"sohu__publish-article",
+                 params:{title:"<标题>", body:"<正文，\n 分段>"}}
+
 # 真发：必须显式 dryRun:false
-media_publish {op:"run", recipeId:"sohu__publish-article", accountCode:"<accounts.sohu>", params:{...}, dryRun:false}
-# 同一单元切到头条号再走一遍（头条 headless 必须 false）
-media_publish {op:"run", recipeId:"toutiao__publish-article", accountCode:"<accounts.toutiao>",
-               params:{title:"<标题>", body:"<正文>", keyword:"<配图检索词>"}, dryRun:false}
-# 科普稿重复以上四步（同一对账号，案例稿之后）
-# 过审后回查真实链接（搜狐/头条必须回查；CSDN 发布即得），按「编号＋平台」各查一次
-media_publish {op:"backfill", recipeId:"sohu__publish-article", accountCode:"a-1", title:"<标题>"}
+egolite_publish {accountCode:"a-1", flow:"sohu__publish-article",
+                 params:{title:"<标题>", body:"<正文，\n 分段>"}, dryRun:false}
+
+# 批量（同一账号 2–3 篇时最快）：egolite_script 里循环
+#   goto 发文列表 → click「发布内容」→ waitFor addarticle → fill 标题 → fill 正文
+#   → click「无需声明」（创作声明是必选项，不点发布会静默失败、页面不跳转）
+#   → scroll 到底 → click「发布」→ waitFor 回到 first/page
+# 成功判据：URL 回到 contentManagement/first/page；只启动不跳转＝没发出去。
+
+# 过审后回查真实链接：到该账号「我的内容」列表读 h3 a 的 href。
+# 已发布条目的 href 形如 https://www.sohu.com/a/<id>_<accountId>；
+# 审核中/未通过的 href 仍是 articlepreview 预览链，**不能当公开链接交出去**。
 ```
 
-**平台差异（实测，配置写在 recipe 里）**
+**平台差异（实测，配置写在 flow 里）**
 
 | 平台 | 账号 | 标题上限 | 额外参数 | headless | 链接何时能拿到 |
 |---|---|---|---|---|---|
@@ -963,7 +991,7 @@ media_publish {op:"backfill", recipeId:"sohu__publish-article", accountCode:"a-1
   `c-1` 是搜狐号、`c-2` 是头条号，注册表里没有 CSDN 账号。
 - recipe 里的 `account_codes` 只是元数据（记录当初录制时用的账号），**不是派活白名单**；
   派哪个账号看 §7.2 的分配结果。
-- 每个账号按自己的 `media` 选 recipe：`sohu__publish-article` / `toutiao__publish-article` /
+- 每个账号按自己的 `media` 选 flow：`sohu__publish-article` / `toutiao__publish-article` /
   `csdn__publish-article`。**同一个单元的两篇用同一个 recipe、同一个账号。**
 - 稿件标题按 §6 H2 本来就在 30 字以内，科普稿按 §6.4 也压在 30 字以内，
   所以搜狐号（72）与头条号（30）都能直接发；`publish_params.py` 会逐平台标出是否超限。
@@ -1041,7 +1069,7 @@ media_publish {op:"backfill", recipeId:"sohu__publish-article", accountCode:"a-1
     ④ 拆号的单元（报告标"拆号"）要能说出原因（该账号某类槽位满了）；
     ⑤ 分配结果里的账号必须是**注册表里已登录**的账号，**同一平台内一篇稿不得落到两个账号**。
     随后逐平台核对所用 recipe 一致（sohu→`sohu__publish-article`，toutiao→`toutiao__publish-article`）；
-11. **彩排**（发布前）：**两篇都要**先 `media_publish ... dryRun:true`，
+11. **彩排**（发布前）：**两篇都要**先 `egolite_publish ... dryRun:true`（默认值），
     确认走到提交前（run 目录里能看到填好的表单与截图），再显式 `dryRun:false`；
     顺序是案例稿先、科普稿后，同一账号；
 12. **上传并验证**（用户要求时）：`ftp_upload.py` 传完逐文件核 SIZE（案例稿与科普稿页面一起传），
@@ -1077,12 +1105,12 @@ media_publish {op:"backfill", recipeId:"sohu__publish-article", accountCode:"a-1
 | 2 写稿 | 联网检索（**唯一通道 AnySearch**）+ 写文本文件 | 按 §4.8 排查；确不可用才在稿外写"AnySearch 不可用，未联网检索"；**不得改用内置 web_search** |
 | 2b 配科普稿 | 写文本文件 + 台账 JSON（纯标准库） | 台账目录写不了就用 `--ledger` 指到可写位置；**不要退回"手记方向"**（必然乱序） |
 | 3 出网页 | 写文本文件（+ 可选 Playwright 跑版式门禁） | 没 Playwright 时 `page_check.py` 的 C 组自动跳过，A/B 照跑并写明 |
-| 4 发自媒体 | 浏览器自动化（本环境是发布插件的 `media_publish` + recipe）；**每个平台都要有一个已登录账号** | 没有发布能力 → **明确告知用户本环境不能发布**，交稿停下，不要手工代发；某平台缺账号 → 报错停下，**不要降级成单平台发布** |
+| 4 发自媒体 | 浏览器自动化（本环境是 **ego-publish 插件**：`egolite_publish` / `egolite_script`，流程 `sohu__publish-article`）；**每个平台都要有一个已登录账号** | 没有发布能力 → **明确告知用户本环境不能发布**，交稿停下，不要手工代发；某平台缺账号 → 报错停下，**不要降级成单平台发布** |
 | 5 传 FTP | FTP 客户端（Python 标准库 `ftplib` 即可） | 传不了就说明原因并给出本地文件清单，不要谎报已上传 |
 | 6 回写与记账 | 写 Excel（openpyxl）+ 写台账 | 表格写不了就输出"待回写清单"让用户手工填；**不改白名单以外的格子** |
 
 工具差异只影响"怎么取数、怎么发布、怎么上传"，**不影响 §3、§4、§5、§6 的写作规则，
-也不影响 §0 的四条边界**。命令名（`media_publish`、`ftp_upload.py` 等）是本环境的实现，
+也不影响 §0 的四条边界**。命令名（`egolite_publish`、`ftp_upload.py` 等）是本环境的实现，
 换环境时按同样语义替换即可，但**门禁与通过标准必须保留**。
 
 ## 11. 参考文件与脚本（按需读取）
@@ -1198,3 +1226,6 @@ media_publish {op:"backfill", recipeId:"sohu__publish-article", accountCode:"a-1
   凭据只能在会话中按需传入，用 `--password` 或 `FTP_PASS` 环境变量；
 - 上传 `_pages.json` 这类记录本机绝对路径的清单到公开目录；
 - 代他人投放媒体、买卖媒体资源。
+- **企业案例稿在第 2 段及以后又出现中文域名/域名相关表述**（v2 口径只允许第 1 段出现，见开篇口径）；
+- **标题里没有「官网」二字**，或标题用了资料中不存在、自己截取的自造简称；
+- 把 `egolite_publish` 的 dry run 当成已发布，或把 `articlepreview` 预览链当公开链接交出去。

@@ -1,0 +1,4 @@
+{
+  "anysearch_skill_dir": "C:\\Users\\Administrator\\.dsh\\skills\\anysearch",
+  "anysearch_cmd": "D:\\deepseek\\resources\\runtime\\primary-runtime\\dependencies\\node\\bin\\node.exe C:\\Users\\Administrator\\.dsh\\skills\\anysearch\\scripts\\anysearch_cli.js"
+}

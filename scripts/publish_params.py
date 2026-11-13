@@ -9,7 +9,7 @@
     site_link         ← 网页清单 _pages.json 里的短 ID + --site-base
     platform_ok       ← 标题长度是否满足各平台上限（头条 30 / 搜狐 72 / CSDN 100）
 
-body 用 \\n 连接各段——正好是 media_publish 需要的形状，也是稿件原文，
+body 用 \\n 连接各段——正好是 egolite_publish 需要的形状，也是稿件原文，
 **不要手抄正文**，手抄必然与网页、与稿件三处不一致。
 
 用法：

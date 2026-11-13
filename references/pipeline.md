@@ -12,7 +12,7 @@
 | 2 | 写稿 | §4–§6 的检索与写作规则 | 每篇一个 `NN-*-稿件.txt` | `draft_check.py` 全绿 + `similarity_check.py` 达标 |
 | 2b | 配科普稿 | §6.4 + `kepu_plan.py` + `kepu_check.py` | 每篇一个 `NN-科普-方向K-*.txt` | 方向按序轮换；`kepu_check.py` 全绿 |
 | 3 | 出网页 | `render_pages.py --short-id`（两次）+ `page_check.py` | 两类页面 + `_pages.json` / `_pages-科普.json` | `page_check.py` 全绿 |
-| 4 | 发自媒体 | `publish_params.py` → `assign_accounts.py` → `media_publish` | 每个**单元**（=1 篇案例稿＋配对科普稿）× 搜狐号＋头条号各一条，共 4 条链接 | **每篇都发两个平台**；**每账号每天 3 案例 + 2 科普**（当天最多 10 个单元，受 5 搜狐号 × 2 科普槽限制）；配对优先同号、槽位不够才拆号；逐条 dry run；链接过审后按平台回查 |
+| 4 | 发自媒体 | `publish_params.py` → `assign_accounts.py` → `egolite_publish` / `egolite_script` | 每个**单元**（=1 篇案例稿＋配对科普稿）× 搜狐号＋头条号各一条，共 4 条链接 | **每篇都发两个平台**；**每账号每天 3 案例 + 2 科普**（当天最多 10 个单元，受 5 搜狐号 × 2 科普槽限制）；配对优先同号、槽位不够才拆号；逐条 dry run；链接过审后按平台回查 |
 | 5 | 传网页 | `ftp_upload.py` | 远端 `article-detail/*.html`（两类页面） | 用**域名**能打开，字节数与本地一致 |
 | 6 | 回写与记账 | `table_writeback.py` + `kepu_plan.py links` | 表格：状态+媒体列+两列链接；台账：科普的四个链接 | 先 `--dry-run` 复核，再真写；脚本自带回读验证 |
 
@@ -169,29 +169,34 @@ python scripts/assign_accounts.py --accounts accounts.json --numbers 1,2,3 --no-
 （见 §4.2 的分散规则）。下例的 `accountCode` 一律写占位符，真实执行时替换：
 
 ```bash
-# 0) 配方自检（改过 recipe 或平台改版后必跑）
-media_recipe {op:"validate", recipeId:"sohu__publish-article"}
-media_recipe {op:"validate", recipeId:"toutiao__publish-article"}
+# 本机发布工具是 ego-publish 插件（egolite_*），流程 id 与老版 recipe 同名
+# 0) 先看账号与流程是否就绪（不启动浏览器）
+egolite_status
 
 # 1) 彩排案例稿（搜狐）：dryRun 默认 true，会填完表单并截图，但**跳过提交**
-media_publish {op:"run", recipeId:"sohu__publish-article", accountCode:"<accounts.sohu>",
-               params:{title:"<案例稿标题>", body:"<正文，\\n 分段>"}, dryRun:true}
+egolite_publish {accountCode:"<accounts.sohu>", flow:"sohu__publish-article",
+                 params:{title:"<案例稿标题>", body:"<正文，\\n 分段>"}}
 # 2) 彩排科普稿（同一搜狐账号；标题/正文取 jobs.json 的 kepu.title / kepu.body）
-media_publish {op:"run", recipeId:"sohu__publish-article", accountCode:"<accounts.sohu>",
-               params:{title:"<科普稿标题>", body:"<科普正文>"}, dryRun:true}
+egolite_publish {accountCode:"<accounts.sohu>", flow:"sohu__publish-article",
+                 params:{title:"<科普稿标题>", body:"<科普正文>"}}
 
-# 3) 真发（搜狐）：案例稿先、科普稿随后
-media_publish {op:"run", recipeId:"sohu__publish-article", accountCode:"<accounts.sohu>",
-               params:{...}, dryRun:false}
-media_publish {op:"run", recipeId:"sohu__publish-article", accountCode:"<accounts.sohu>",
-               params:{kepu 的 title/body}, dryRun:false}
+# 3) 真发（搜狐）：案例稿先、科普稿随后；必须显式 dryRun:false
+egolite_publish {accountCode:"<accounts.sohu>", flow:"sohu__publish-article",
+                 params:{...}, dryRun:false}
+egolite_publish {accountCode:"<accounts.sohu>", flow:"sohu__publish-article",
+                 params:{kepu 的 title/body}, dryRun:false}
 
 # 4) 换到头条号，把同一个单元的两篇再走一遍（头条必须 headless:false + 配图检索词）
-media_publish {op:"run", recipeId:"toutiao__publish-article", accountCode:"<accounts.toutiao>",
-               params:{title:"<案例稿标题>", body:"<正文>", keyword:"工业制造"},
-               dryRun:false, headless:false}
-media_publish {op:"run", recipeId:"toutiao__publish-article", accountCode:"<accounts.toutiao>",
-               params:{kepu 的 title/body, keyword:"..."}, dryRun:false, headless:false}
+egolite_publish {accountCode:"<accounts.toutiao>", flow:"toutiao__publish-article",
+                 params:{title:"<案例稿标题>", body:"<正文>", keyword:"工业制造"},
+                 dryRun:false}
+egolite_publish {accountCode:"<accounts.toutiao>", flow:"toutiao__publish-article",
+                 params:{kepu 的 title/body, keyword:"..."}, dryRun:false}
+
+# 同一个账号连发多篇时，用 egolite_script 一个脚本循环最快，核心步骤固定：
+#   goto 发文列表 → click「发布内容」→ waitFor addarticle → fill 标题 → fill 正文
+#   → click「无需声明」（不点则发布会静默失败、URL 不跳转）→ scroll 到底 → click「发布」
+#   → waitFor 回到 contentManagement/first/page（回到列表才算发成功）
 ```
 
 - `title` / `body` **逐字取自 `jobs.json`**：案例稿用 `title`/`body`，科普稿用 `kepu.title`/`kepu.body`；
@@ -201,15 +206,20 @@ media_publish {op:"run", recipeId:"toutiao__publish-article", accountCode:"<acco
 - **不要为了省事只彩排一篇**：两篇的标题长度、配图关键词、正文体型都不同，彩排结果不能互相替代。
 - 每个账号**串行**执行，同一账号不要并发（见 §7.4）；一个单元给该账号增加 2 篇的负载
   （搜狐每天 5 篇、按 3 案例 + 2 科普切分，所以一个账号一天通常接 2 个单元，最多 3 个单元的案例）。
-- 失败时读 run 目录里的 `run.json` 与失败步截图；`LOGIN_REQUIRED` 先
-  `media_session {op:"handoff"}` 让用户扫码，再 `{op:"resume"}` 继续。
+- 失败时读 run 目录里的 `run.json` 与失败步截图；登录失效先
+  `egolite_account {op:"login", code:"<账号代号>"}` 请用户扫码，再继续。
 - 科普稿失败不影响案例稿已经发布成功的事实：**两篇的成败各自判断**，别把一对当成一笔；
   **两个平台也各自判断**——搜狐成功不代表头条成功。
 
 ### 4.5 拿链接：过审后回查
 
 ```bash
-media_publish {op:"backfill", recipeId:"sohu__publish-article", accountCode:"a-1", title:"<标题>"}
+# ego-publish 没有独立 backfill 命令：过审后到该账号「我的内容」列表读 h3 a 的 href
+egolite_act {accountCode:"a-1", action:"goto",
+             url:"https://mp.sohu.com/mpfe/v4/contentManagement/first/page"}
+egolite_act {accountCode:"a-1", action:"eval",
+             expression:"...读取 li 里 h3 a 的 href 与状态..."}
+# 已发布条目 href 形如 https://www.sohu.com/a/<id>_<accountId>；审核中仍是 articlepreview 预览链
 ```
 
 - 搜狐/头条发布后是**审核中**，此时只有预览链，不能当公开链接用
